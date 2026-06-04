@@ -285,18 +285,20 @@ python -m ngfw_matcher match --rules-file rules.json --interactive
   --device ID          deviceGroupId (иначе — интерактивный выбор)
 
   Трафик:
-  --src IP/CIDR/any    Source: 192.168.1.10 | 10.0.0.0/8 | any
-  --dst IP/CIDR/any    Destination
+  --src IP/CIDR/any    Source: 192.168.1.10 | 10.0.0.0/8 | 10.0.0.0/24,192.168.1.10,20.10.20.0/24 | any
+  --dst IP/CIDR/any    Destination # ayakjubxyj --src 
   --dport PORTS        Порт(ы): 443 | 80,443 | 5000-5322 | 80,5000-5010 | any
   --proto PROTO        tcp | udp | icmp | any
   --sport PORT         Source port (опц.)
   --zone-src ZONE      Зона источника (опц.)
   --zone-dst ZONE      Зона назначения (опц.)
+  --overlaps           Все совпадения 
 
   Режим:
   --interactive / -i   Цикл ввода трафика
   --batch FILE.csv     Batch из CSV
   --verbose / -v       Подробный вывод полей правила
+  --fullview           Полный вывовд объектов (адреса, сервисы) доспен только с режимом --output 
 
   Вывод:
   --output FILE.csv    Сохранить результаты в CSV
