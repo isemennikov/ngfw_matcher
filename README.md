@@ -1,4 +1,4 @@
-# ngfw_match
+# ngfw_matcher
 Checking whether the input matches the rules on PT NGFW
 
 # ngfw-match
@@ -26,8 +26,8 @@ CLI-инструмент симуляции трафика для **PT NGFW**.
 ## Структура пакета
 
 ```
-ngfw_match/
-├── __main__.py         # Точка входа: python -m ngfw_match
+ngfw_matcherer/
+├── __main__.py         # Точка входа: python -m ngfw_matcherer
 ├── core/
 │   ├── models.py       # TrafficFlow, NormalizedRule, MatchResult
 │   ├── resolver.py     # Раскрытие объектов → IP-сети / порты
@@ -49,24 +49,24 @@ ngfw_match/
 
 *** Запуск***
 
-Приложение следует запускать в диретории выше /ngfw_match. Например 
+Приложение следует запускать в диретории выше /ngfw_matcher. Например 
 
 ```bash
- /User/Documents/HERE/ngfw_match
+ /User/Documents/HERE/ngfw_matcher
  ```
 
 ```bash
 git clone <repo>
-cd "PT NGFW"   # родительская папка, содержащая ngfw_match/
+cd "PT NGFW"   # родительская папка, содержащая ngfw_matcher/
 
 # Проверка подключения
-python -m ngfw_match --host https://10.1.31.100 --user admin --pass secret test-connection
+python -m ngfw_matcher --host https://10.1.31.100 --user admin --pass secret test-connection
 
 # Через SSH-туннель (пробросить порт заранее: ssh -N -L 3663:10.1.31.100:443 user@jump)
-python -m ngfw_match --host https://localhost:3663 --user admin --pass secret test-connection
+python -m ngfw_matcher --host https://localhost:3663 --user admin --pass secret test-connection
 
 # Одиночный запрос
-python -m ngfw_match \
+python -m ngfw_matcher \
     --host https://10.1.31.100 --user admin --pass secret \
     match --src 192.168.1.10 --dst 10.0.0.5 --dport 443 --proto tcp
 ```
@@ -95,7 +95,7 @@ python -m ngfw_match \
 Структура вызова: **общие флаги** идут до команды, **флаги команды** — после.
 
 ```bash
-python -m ngfw_match --host URL --user LOGIN --pass PWD  КОМАНДА  [флаги команды]
+python -m ngfw_matcher --host URL --user LOGIN --pass PWD  КОМАНДА  [флаги команды]
 ```
 
 ### test-connection
@@ -103,7 +103,7 @@ python -m ngfw_match --host URL --user LOGIN --pass PWD  КОМАНДА  [фла
 Проверяет подключение и авторизацию, выводит лог каждого шага и список доступных Device Groups.
 
 ```bash
-python -m ngfw_match --host https://10.1.31.100 --user admin --pass secret test-connection
+python -m ngfw_matcher --host https://10.1.31.100 --user admin --pass secret test-connection
 ```
 
 ```
@@ -126,7 +126,7 @@ python -m ngfw_match --host https://10.1.31.100 --user admin --pass secret test-
 Основная команда — симуляция трафика по правилам.
 
 ```bash
-python -m ngfw_match --host https://10.1.31.100 --user admin --pass secret \
+python -m ngfw_matcher --host https://10.1.31.100 --user admin --pass secret \
   match --src 192.168.1.10 --dst 10.0.0.5 --dport 443 --proto tcp
 ```
 
@@ -137,7 +137,7 @@ python -m ngfw_match --host https://10.1.31.100 --user admin --pass secret \
 ### 1. Одиночный запрос
 
 ```bash
-python -m ngfw_match --host https://10.1.31.100 --user admin --pass secret \
+python -m ngfw_matcher --host https://10.1.31.100 --user admin --pass secret \
   match \
   --src 192.168.1.10 \
   --dst 10.0.0.5 \
@@ -208,7 +208,7 @@ match --src 10.44.16.65  --dst any --dport any  --proto tcp --overlaps
 ### 4. Batch-режим
 
 ```bash
-python -m ngfw_match --host https://10.1.31.100 --user admin --pass secret \
+python -m ngfw_matcher --host https://10.1.31.100 --user admin --pass secret \
   match --device 019e41c1-... --batch traffic.csv --output results.csv
 ```
 
@@ -227,7 +227,7 @@ src_ip,dst_ip,dst_port,protocol,src_port,zone_src,zone_dst
 Правила загружаются один раз, затем вводишь запросы в цикле без повторной авторизации.
 
 ```bash
-python -m ngfw_match --host https://10.1.31.100 --user admin --pass secret \
+python -m ngfw_matcher --host https://10.1.31.100 --user admin --pass secret \
   match --device 019e41c1-... --interactive
 ```
 
@@ -242,7 +242,7 @@ traffic> q
 ### 6. Через backend (кэш ngfw-manager)
 
 ```bash
-python -m ngfw_match \
+python -m ngfw_matcher \
   --source backend --backend-host https://ngfw-manager.corp \
   --user admin --pass secret \
   match --device 019e41c1-... --batch traffic.csv
@@ -252,14 +252,14 @@ python -m ngfw_match \
 
 Сохранить правила локально:
 ```bash
-python -m ngfw_match --host https://10.1.31.100 --user admin --pass secret \
+python -m ngfw_matcher --host https://10.1.31.100 --user admin --pass secret \
   match --device 019e41c1-... --save-rules rules.json \
   --src 1.1.1.1 --dst 2.2.2.2 --dport 80 --proto tcp
 ```
 
 Работать без подключения:
 ```bash
-python -m ngfw_match match --rules-file rules.json --interactive
+python -m ngfw_matcher match --rules-file rules.json --interactive
 ```
 
 ---
