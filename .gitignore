@@ -1,0 +1,36 @@
+# Python
+venv/
+ENV/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+Thumbs.db
+
+# Ignore all JSON and CSV files
+*.json
+*.csv
+
+# Build / packaging
+dist/
+build/
+*.egg-info/
+pip-wheel-metadata/
+
+# Other
+.idea/
+.coverage
+htmlcov/
+.env
+
+openapi.*
