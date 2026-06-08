@@ -39,6 +39,21 @@ def c(text, *codes) -> str:
 
 # ─── Вывод одного результата ─────────────────────────────────────────────────
 
+
+def _get_fqdn_names(rule) -> list[str]:
+    """Извлекает FQDN-значения из source_addr и destination_addr правила."""
+    result = []
+    for field in (rule.source_addr, rule.destination_addr):
+        if not field or field.get("kind") != "RULE_KIND_LIST":
+            continue
+        for obj in (field.get("objects") or []):
+            if "networkFqdn" in obj:
+                fqdn = obj["networkFqdn"].get("fqdn", "")
+                if fqdn and fqdn not in result:
+                    result.append(fqdn)
+    return result
+
+
 def _get_app_names(rule) -> list[str]:
     """Извлекает имена приложений из RuleFieldApplication (kind=LIST)."""
     if rule.application is None:
@@ -159,6 +174,21 @@ def print_result(result: MatchResult, verbose: bool = False, out: TextIO = sys.s
               f"  {c(f'(глобальная #{dup.index + 1})', _C.DIM)}\n")
         w(f"  {c('  → Сервис ANY + приложение L7: инструмент работает на L3/L4, проверьте вручную.', _C.DIM)}\n")
 
+     # ── Блок 3: FQDN-правила (совпадение только из-за FQDN→ANY) ─────────────────
+    if result.skipped_fqdn:
+        w(f"\n  {c('?  Правила с FQDN-условием (не проверялись по IP):', _C.DIM, _C.BOLD)} "
+          f"{c(f'({len(result.skipped_fqdn)} шт.)', _C.DIM)}\n")
+        for dup in result.skipped_fqdn:
+            action_str = c(dup.action.upper(), _C.GREEN if dup.action == "allow" else _C.RED)
+            dup_pos    = dup.position_in_precedence or (dup.index + 1)
+            fqdn_names = _get_fqdn_names(dup)
+            fqdn_note  = c(f"  [FQDN: {', '.join(fqdn_names[:3])}]", _C.DIM) if fqdn_names else ""
+            w(f"     [#{dup_pos} в {dup.precedence}] {c(dup.name, _C.DIM)}"
+              f"  →  {action_str}"
+              f"{fqdn_note}"
+              f"  {c(f'(глобальная #{dup.index + 1})', _C.DIM)}\n")
+        w(f"  {c('  → src/dst содержит FQDN: инструмент работает на L3, проверьте вручную.', _C.DIM)}\n")
+
     if result.skipped_disabled:
         w(f"  {c(f'(пропущено disabled: {result.skipped_disabled})', _C.DIM)}\n")
 
@@ -205,7 +235,9 @@ def print_summary(results: list[MatchResult], out: TextIO = sys.stdout):
         out.write(c("     → Кандидаты на удаление!\n", _C.YELLOW))
     if l7_total:
         out.write(c(f"  ?  L7-правил (не проверялось)    : {l7_total}\n", _C.DIM))
-
+    fqdn_total = sum(len(r.skipped_fqdn) for r in results)
+    if fqdn_total:
+        out.write(c(f"  ?  FQDN-правил (не проверялось)  : {fqdn_total}\n", _C.DIM))
     out.write(c("═" * 72 + "\n\n", _C.BOLD))
 
 
@@ -490,6 +522,7 @@ def export_csv(results: list[MatchResult], path: str):
         "rule_position", "precedence",
         "shadow_count", "shadow_rules",
         "l7_skipped_count", "l7_skipped_rules",
+        "fqdn_skipped_count", "fqdn_skipped_rules",
     ]
     with open(path, "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=fields)
@@ -513,5 +546,7 @@ def export_csv(results: list[MatchResult], path: str):
                 "shadow_rules":        "; ".join(f"[{s.index+1}] {s.name}" for s in r.shadowed),
                 "l7_skipped_count":    len(r.skipped_app),
                 "l7_skipped_rules":    "; ".join(f"[{s.index+1}] {s.name}" for s in r.skipped_app),
+                "fqdn_skipped_count":  len(r.skipped_fqdn),
+                "fqdn_skipped_rules":  "; ".join(f"[{s.index+1}] {s.name}" for s in r.skipped_fqdn),
             })
     print(c(f"[+] Результаты сохранены → {path}", _C.GREEN))

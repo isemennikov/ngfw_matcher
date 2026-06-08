@@ -97,6 +97,39 @@ class ObjectResolver:
 
         return nets or ANY_NET
 
+    def resolve_field_network_concrete(self, field: dict | None) -> list[_NET]:
+        """
+        Как resolve_field_network, но FQDN/geo объекты пропускаются без fallback.
+        Возвращает [] если все объекты — FQDN/geo (пустой список = нет IP-совпадений).
+        """
+        if field is None:
+            return ANY_NET
+        kind = field.get("kind", "")
+        if kind in ("RULE_KIND_ANY", "RULE_KIND_UNSPECIFIED", ""):
+            return ANY_NET
+        nets: list[_NET] = []
+        for obj in field.get("objects") or []:
+            nets.extend(self._resolve_net_object_no_fqdn(obj))
+        return nets  # Может быть пустым — намеренно, без ANY_NET fallback
+
+    def _resolve_net_object_no_fqdn(self, obj: dict) -> list[_NET]:
+        """Как _resolve_net_object, но FQDN/geo возвращают [] вместо ANY_NET."""
+        if "networkFqdn" in obj or "networkGeoAddress" in obj:
+            return []
+        if "networkGroup" in obj:
+            group = obj["networkGroup"]
+            gid = group.get("id")
+            if not gid:
+                return ANY_NET
+            if self._fetch_net_group is None:
+                return ANY_NET
+            members = self._fetch_net_group(gid)
+            result: list[_NET] = []
+            for member in members:
+                result.extend(self._resolve_net_object_no_fqdn(member))
+            return result  # Пустой если группа содержит только FQDN
+        return self._resolve_net_object(obj)    
+
     def resolve_field_service(self, field: dict | None) -> list[tuple]:
         """
         RuleFieldService → список (proto_name, port_min, port_max).
