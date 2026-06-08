@@ -1,9 +1,5 @@
 # ngfw_matcher
-Checking whether the input matches the rules on PT NGFW
-
-# ngfw-match
-
-CLI-инструмент симуляции трафика для **PT NGFW**.  
+Поиск теневых правил и дубликатов в **PT NGFW** 
 На вход — `src_ip dst_ip dst_port protocol`, на выход — совпавшее правило,
 действие и список **теневых / дублирующих правил**.
 
