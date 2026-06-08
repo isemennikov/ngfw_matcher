@@ -59,6 +59,8 @@ class MatchResult:
     shadowed:      list[NormalizedRule]   = field(default_factory=list)
     # Правила с application-условием (L7): service=ANY, app=LIST — не проверялись
     skipped_app:   list[NormalizedRule]   = field(default_factory=list)
+    # Правила с FQDN/geo в src/dst — совпало бы если FQDN=ANY, но не проверить по IP
+    skipped_fqdn:  list[NormalizedRule]   = field(default_factory=list)
     # Аннотации совпадений: uid → "↑ dst" / "↓ dst" / "↑ src" / "↓ src" и т.п.
     match_notes:   dict[str, str]         = field(default_factory=dict)
 

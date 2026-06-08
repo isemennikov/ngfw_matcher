@@ -103,7 +103,12 @@ class RuleMatcher:
             "networkIpAddress" in obj or "networkIpRange" in obj or "networkGroup" in obj
             for obj in (field.get("objects") or [])
         )
-
+    @staticmethod
+    def _field_has_fqdn(field: dict | None) -> bool:
+        """True если поле содержит networkFqdn объекты на верхнем уровне."""
+        if not field or field.get("kind") != "RULE_KIND_LIST":
+            return False
+        return any("networkFqdn" in obj for obj in (field.get("objects") or []))
     @staticmethod
     def _is_app_only(rule: NormalizedRule) -> bool:
         """True: service=ANY, application=LIST — L7-only, нельзя проверить по IP/порту."""
@@ -208,6 +213,24 @@ class RuleMatcher:
                 if self._rule_matches(rule, flow, src, dst):
                     result.skipped_app.append(rule)
                 continue
+            has_fqdn = (self._field_has_fqdn(rule.source_addr) or
+                        self._field_has_fqdn(rule.destination_addr))
+
+            if has_fqdn:
+                # Сначала пробуем совпасть только по конкретным IP (FQDN→[])
+                if self._rule_matches(rule, flow, src, dst, concrete=True):
+                    # Совпало по IP/CIDR несмотря на наличие FQDN — нормальный матч
+                    note = self._build_match_note(src, dst, rule)
+                    if note:
+                        result.match_notes[rule.uid] = note
+                    if result.matched is None:
+                        result.matched = rule
+                    else:
+                        result.shadowed.append(rule)
+                elif self._rule_matches(rule, flow, src, dst, concrete=False):
+                    # Совпало только потому что FQDN→ANY — нельзя проверить
+                    result.skipped_fqdn.append(rule)
+                continue
 
             if self._rule_matches(rule, flow, src, dst):
                 note = self._build_match_note(src, dst, rule)
@@ -220,21 +243,28 @@ class RuleMatcher:
 
         return result
 
-    def _rule_matches(self, rule: NormalizedRule, flow: TrafficFlow, src, dst) -> bool:
+    def _rule_matches(self, rule: NormalizedRule, flow: TrafficFlow, src, dst,
+                      concrete: bool = False) -> bool:
+        """
+        concrete=False (по умолчанию): FQDN объекты → ANY_NET (консервативно).
+        concrete=True:  FQDN объекты → [] (только реальные IP/CIDR).
+        """
 
         # ── Зоны ─────────────────────────────────────────────────────────────
         src_zones = self.resolver.resolve_field_zone(rule.source_zone)
         dst_zones = self.resolver.resolve_field_zone(rule.destination_zone)
         if src_zones or dst_zones:
             return False
+        resolve = (self.resolver.resolve_field_network_concrete
+                   if concrete else self.resolver.resolve_field_network)    
 
         # ── Источник ──────────────────────────────────────────────────────────
-        src_nets = self.resolver.resolve_field_network(rule.source_addr)
+        src_nets = resolve(rule.source_addr)
         if not _addr_in_nets(src, src_nets, self.strict):
             return False
 
         # ── Назначение ────────────────────────────────────────────────────────
-        dst_nets = self.resolver.resolve_field_network(rule.destination_addr)
+        dst_nets = resolve(rule.destination_addr)
         if not _addr_in_nets(dst, dst_nets, self.strict):
             return False
 

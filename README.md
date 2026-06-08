@@ -286,7 +286,7 @@ python -m ngfw_matcher match --rules-file rules.json --interactive
 
   Трафик:
   --src IP/CIDR/any    Source: 192.168.1.10 | 10.0.0.0/8 | 10.0.0.0/24,192.168.1.10,20.10.20.0/24 | any
-  --dst IP/CIDR/any    Destination # ayakjubxyj --src 
+  --dst IP/CIDR/any    Destination # Аналогично  --src 
   --dport PORTS        Порт(ы): 443 | 80,443 | 5000-5322 | 80,5000-5010 | any
   --proto PROTO        tcp | udp | icmp | any
   --sport PORT         Source port (опц.)
