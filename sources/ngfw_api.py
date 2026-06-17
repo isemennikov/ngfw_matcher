@@ -4,9 +4,7 @@
 
 BASE_URL строится из --host:
     https://10.1.31.100            →  https://10.1.31.100/api/v2
-    https://10.1.31.100/api/v2     →  https://10.1.31.100/api/v2  (уже готово)
     https://localhost:3223         →  https://localhost:3223/api/v2  (туннель)
-    https://localhost:3223/api/v2  →  https://localhost:3223/api/v2  (туннель)
 
 Все запросы — POST на {BASE_URL}/{Operation} с JSON-телом.
 """

@@ -3,7 +3,7 @@ import sys
 import os
 
 _here = os.path.dirname(os.path.abspath(__file__))  # папка ngfw_matcher/
-_root = os.path.dirname(_here)                       # папка PT NGFW/ (родитель)
+_root = os.path.dirname(_here)                       # папка в которой содержится ngfw_matcher/
 
 # Вставляем родительскую папку первой в путь
 for p in [_root, _here]:
