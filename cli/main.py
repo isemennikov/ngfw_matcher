@@ -1,5 +1,5 @@
 """
-ngfw-match — CLI для симуляции трафика через политию PT NGFW.
+ngfw-matcher — CLI для симуляции трафика через политию PT NGFW.
 
 Два источника данных (выбираются флагом --source):
     ngfw    [приоритет] — прямой PT NGFW API (актуальные данные)
@@ -636,7 +636,7 @@ def _run_flow(args, matcher: RuleMatcher):
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        prog="ngfw-match",
+        prog="ngfw-matcher",
         description="Симулятор трафика для PT NGFW — находит совпадающее правило и выявляет дубли.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )

@@ -1,7 +1,5 @@
-# ngfw_matcher
-Checking whether the input matches the rules on PT NGFW
 
-# ngfw-match
+# ngfw-matcher
 
 CLI-инструмент симуляции трафика и анализа политики **PT NGFW**.  
 На вход — `src_ip dst_ip dst_port protocol`, на выход — совпавшее правило,
