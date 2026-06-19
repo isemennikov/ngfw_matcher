@@ -306,13 +306,26 @@ class RuleMatcher:
         """
         # Только правила без явных зон — анализ исключительно по IP/порту
         all_enabled = [r for r in self.rules if r.enabled]
-        active      = [
+        no_zone     = [
+
             r for r in all_enabled
             if not self.resolver.resolve_field_zone(r.source_zone)
             and not self.resolver.resolve_field_zone(r.destination_zone)
         ]
-        log.info("check_shadowed: включено=%d  зональных_пропущено=%d  в_анализе=%d",
-                 len(all_enabled), len(all_enabled) - len(active), len(active))
+        # FQDN-правила: resolver возвращает ANY_NET как fallback → ложные тени.
+        # App-only (service=ANY + application=LIST): svc тоже ANY → ложные тени.
+        # Оба типа пропускаем — аналогично зональным.
+        active = [
+            r for r in no_zone
+            if not self._is_app_only(r)
+            and not self._field_has_fqdn(r.source_addr)
+            and not self._field_has_fqdn(r.destination_addr)
+        ]
+        skipped_l7 = len(no_zone) - len(active)
+        log.info(
+            "check_shadowed: включено=%d  зональных=%d  fqdn/app-only=%d  в_анализе=%d",
+            len(all_enabled), len(all_enabled) - len(no_zone), skipped_l7, len(active),
+        )
 
         # Предварительно раскрываем сети для всех правил
         src_nets_cache = {r.uid: self.resolver.resolve_field_network(r.source_addr)      for r in active}
@@ -379,7 +392,7 @@ def _svc_covers(a_svcs: list, b_svcs: list) -> bool:
     for b_proto, b_lo, b_hi in b_svcs:
         covered = False
         for a_proto, a_lo, a_hi in a_svcs:
-            proto_ok = (a_proto == "any" or b_proto == "any" or a_proto == b_proto)
+            proto_ok = (a_proto == "any" or a_proto == b_proto)
             port_ok  = (a_lo <= b_lo and a_hi >= b_hi)
             if proto_ok and port_ok:
                 covered = True

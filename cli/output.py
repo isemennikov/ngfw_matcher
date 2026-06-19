@@ -910,12 +910,16 @@ def print_hits_table(rows: list[dict]) -> None:
         print(f"  {name_col}  {hits_col}  {bar_col}")
 
     print()
-    total = sum(r["hits"] for r in rows)
+    total    = sum(r["hits"] for r in rows)
+    zero_cnt = sum(1 for r in rows if r["hits"] == 0)
     legend = (
         c("█ низкие", _C.GREEN) + "  " +
         c("█ средние", _C.YELLOW) + "  " +
         c("█ высокие", _C.RED)
     )
     print(f"  {legend}")
-    print(c(f"  Правил: {len(rows)}   Суммарно hits: {_fmt_hits(total)}", _C.DIM))
+    summary = f"  Правил: {len(rows)}   Суммарно hits: {_fmt_hits(total)}"
+    if zero_cnt:
+        summary += f"   {c(f'Без срабатываний: {zero_cnt}', _C.DIM)}"
+    print(c(summary, _C.DIM))
     print()

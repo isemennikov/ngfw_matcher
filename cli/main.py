@@ -883,14 +883,28 @@ def cmd_check_shadowed(args):
         ok(f"Device Group ID:   {device_group_id}")
         matcher = build_matcher(source, device_group_id)
 
+    from ..core.matcher import RuleMatcher as _RM
     total   = len(matcher.rules)
     enabled = sum(1 for r in matcher.rules if r.enabled)
     zonal   = sum(1 for r in matcher.rules if r.enabled and (
         matcher.resolver.resolve_field_zone(r.source_zone) or
         matcher.resolver.resolve_field_zone(r.destination_zone)
     ))
+#------------------L7 skiper--------------------------------------------------
+    l7_skip = sum(
+        1 for r in matcher.rules
+        if r.enabled
+        and not matcher.resolver.resolve_field_zone(r.source_zone)
+        and not matcher.resolver.resolve_field_zone(r.destination_zone)
+        and (
+            _RM._is_app_only(r)
+            or _RM._field_has_fqdn(r.source_addr)
+            or _RM._field_has_fqdn(r.destination_addr)
+        )
+    ) 
     info(f"Правил PRE+POST: {total}  включено: {enabled}  "
-         f"зональных (пропускаются): {zonal}  в анализе: {enabled - zonal}")
+         f"зональных: {zonal}  FQDN/app-only: {l7_skip}  "
+         f"в анализе: {enabled - zonal - l7_skip}")
 
     results = matcher.check_shadowed()
     print_shadowed_analysis(results)
