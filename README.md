@@ -88,27 +88,6 @@ python -m ngfw_matcher \
 
 ---
 
-## Все параметры
-
-### Структура вызова
-
-**Общие флаги** идут до команды, **флаги команды** — после:
-
-```bash
-python -m ngfw_matcher --host URL --user LOGIN --pass PWD  КОМАНДА  [флаги команды]
-```
-
-### Общие параметры (до команды)
-
-```
-  --host URL           Адрес СУ: https://10.1.31.100 или https://localhost:3663
-  --user LOGIN         Логин
-  --pass PWD           Пароль
-  --token TOKEN        Bearer-токен (вместо логина/пароля)
-  --verify-ssl         Проверять TLS-сертификат
-  --log-level          DEBUG | INFO | WARNING | ERROR
-```
-
 ### Команды
 
 #### test-connection
@@ -308,7 +287,7 @@ python -m ngfw_matcher match --rules-file rules.json --interactive
 
 #### find-rule
 
-Поиск правила по имени (подстрока) или UUID. Выводит карточку с раскрытием всех полей.
+Поиск правил по имени (подстрока), UUID или **явно прописанному порту**. Выводит карточку с раскрытием всех полей.
 
 ```bash
 # По части имени
@@ -318,6 +297,12 @@ python -m ngfw_matcher --host https://10.1.31.100 --user admin --pass secret \
 # По UUID
 python -m ngfw_matcher --host https://10.1.31.100 --user admin --pass secret \
   find-rule 01993d88-c005-79bf-8e6b-5dcdcab8828a --device 019e41c1-...
+
+ Все правила с явным портом 179 (BGP) — из снапшота, без API
+python -m ngfw_match find-rule --dport 179 --snapshot state.json
+
+# Порт + протокол + фильтр по имени
+python -m ngfw_match find-rule bgp --dport 179 --proto tcp --snapshot state.json  
 
 # С экспортом в JSON
 python -m ngfw_matcher --host https://10.1.31.100 --user admin --pass secret \
@@ -393,6 +378,24 @@ python -m ngfw_matcher --host https://localhost:3663 --user admin --pass secret 
   --batch-size N       Размер батча к API (по умолчанию: 30)
 ```
 
+### snapshot
+
+Сохраняет полное состояние политики в один JSON-файл для офлайн-анализа.  
+В отличие от `--save-rules`, рекурсивно раскрывает все сетевые и сервисные группы —
+анализ без сети даёт точные результаты без fallback к `ANY`.
+
+```bash
+# Создать снапшот
+python -m ngfw_match --host https://10.1.31.100 --user admin --pass secret \
+  snapshot --device 019e41c1-... --out state.json
+
+# Работать офлайн (--host не нужен)
+python -m ngfw_match match        --snapshot state.json --src 10.0.0.1 --dst 8.8.8.8 --dport 443 --proto tcp
+python -m ngfw_match check-shadowed --snapshot state.json
+python -m ngfw_match find-rule "allow_http" --snapshot state.json
+```
+
+
 ---
 
 #### check-shadowed
@@ -424,6 +427,69 @@ python -m ngfw_matcher --host https://10.1.31.100 --user admin --pass secret \
 
 Параметры check-shadowed:
 ```
+  --device ID          deviceGroupId
+  --output FILE.json   Сохранить результаты анализа в JSON
+  --rules-file FILE    Оффлайн-режим
+```
+
+
+
+## Все параметры
+
+```
+Общие (до команды):
+  --host URL           Адрес СУ: https://10.1.31.100 или https://localhost:3663
+  --user LOGIN         Логин
+  --pass PWD           Пароль
+  --token TOKEN        Bearer-токен (вместо логина/пароля)
+  --verify-ssl         Проверять TLS-сертификат
+  --log-level          DEBUG | INFO | WARNING | ERROR
+
+Команды:
+  test-connection      Проверить подключение и показать Device Groups
+  match                Симулировать трафик по правилам
+  find-rule            Найти правило по имени или UUID
+  check-shadowed       Найти теневые (перекрытые) правила
+
+Параметры match:
+  --source MODE        ngfw (по умолч.) | backend
+  --backend-host URL   URL ngfw-manager (при --source backend)
+  --device ID          deviceGroupId (иначе — интерактивный выбор)
+
+  Трафик:
+  --src IP/CIDR/any    Source: 192.168.1.10 | 10.0.0.0/8 | any
+                       Несколько через запятую: 10.0.0.1,192.168.1.0/24
+  --dst IP/CIDR/any    Destination (аналогично --src)
+  --dport PORTS        Порт(ы): 443 | 80,443 | 5000-5322 | 80,5000-5010 | any
+  --proto PROTO        tcp | udp | icmp | any
+
+  Режим:
+  --fullview           Раскрыть группы в выводе matched/shadowed правил.
+                       С --output FILE.json — дополнительно сохраняет JSON-скан
+                       всех правил, совпадающих по src.
+  --overlap            Нестрогий матчинг: включает правила с подсетями запроса
+  --interactive / -i   Цикл ввода трафика
+  --batch FILE.csv     Batch из CSV
+  --verbose / -v       Подробный вывод полей правила
+
+  Вывод:
+  --output FILE        Сохранить результаты (CSV для match, JSON для --fullview)
+  --save-rules FILE    Сохранить правила в JSON
+  --log-level          DEBUG | INFO | WARNING | ERROR
+
+  Оффлайн:
+  --rules-file FILE    Правила из локального JSON
+  --objects-file FILE  Объекты из локального JSON
+
+Параметры find-rule:
+  PATTERN_OR_UUID      Подстрока имени (регистронезависимо) или полный UUID (необязательно)
+  --dport PORT[-PORT]  Фильтр по dst-порту: только правила с явным указанием порта
+  --proto PROTO        Протокол для --dport: tcp | udp | icmp | any (по умолчанию any)
+  --device ID          deviceGroupId
+  --output FILE.json   Сохранить найденные правила в JSON
+  --rules-file FILE    Оффлайн-режим
+
+Параметры check-shadowed:
   --device ID          deviceGroupId
   --output FILE.json   Сохранить результаты анализа в JSON
   --rules-file FILE    Оффлайн-режим

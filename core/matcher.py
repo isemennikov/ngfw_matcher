@@ -289,10 +289,15 @@ class RuleMatcher:
         for svc_proto, port_min, port_max in services:
             svc_proto = svc_proto.lower()
             proto_ok  = svc_proto == "any" or proto == "any" or svc_proto == proto
+            if not proto_ok:
+                continue
+            # ICMP/ICMPv6 carry no TCP/UDP port — skip when caller specifies a real port
+            if svc_proto in ("icmp", "icmpv6") and dport > 0:
+                continue
             port_ok   = (dport == 0
                          or (port_min == 0 and port_max == 65535)
                          or (port_min <= dport <= port_max))
-            if proto_ok and port_ok:
+            if port_ok:
                 return True
 
         return False

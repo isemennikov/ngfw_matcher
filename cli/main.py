@@ -267,11 +267,14 @@ def _normalize_rule(raw: dict, index: int) -> "NormalizedRule":
         action = "deny"
 
     precedence = raw.get("_precedence") or raw.get("precedence") or "default"
-    # Нормализуем строку precedence
-    if "PRE" in str(precedence).upper():
-        precedence = "pre"
-    elif "POST" in str(precedence).upper():
+    # Нормализуем строку precedence.
+    # Важно: проверять _POST раньше _PRE, потому что "PRECEDENCE" содержит "PRE"
+    # как подстроку — иначе RULE_PRECEDENCE_POST ошибочно попадёт в "pre".
+    _p = str(precedence).upper()
+    if _p.endswith("_POST") or _p == "POST":
         precedence = "post"
+    elif _p.endswith("_PRE") or _p == "PRE":
+        precedence = "pre"
     else:
         precedence = "default"
 
@@ -747,9 +750,13 @@ def build_parser() -> argparse.ArgumentParser:
     m.add_argument("--objects-file", metavar="FILE.json", help="Объекты из локального JSON")
 
     # ── find-rule ──────────────────────────────────────────────────────────────
-    fr = sub.add_parser("find-rule", help="Найти правило по имени или UUID")
-    fr.add_argument("name", metavar="PATTERN_OR_UUID",
+    ffr = sub.add_parser("find-rule", help="Найти правило по имени, UUID или порту")
+    fr.add_argument("name", metavar="PATTERN_OR_UUID", nargs="?", default=None,
                     help="Имя (подстрока, регистронезависимо) или UUID правила")
+    fr.add_argument("--dport", metavar="PORT[-PORT]",
+                    help="Фильтр по dst-порту (одиночный, диапазон или список через запятую)")
+    fr.add_argument("--proto", metavar="PROTO", default="any",
+                    help="Протокол для --dport: tcp | udp | icmp | any (по умолчанию any)")                
     fr.add_argument("--source", choices=["ngfw", "backend"], default="ngfw")
     fr.add_argument("--backend-host", metavar="URL")
     fr.add_argument("--device", metavar="DEVICE_GROUP_ID")
@@ -852,6 +859,14 @@ def _row(label: str, value: str):
 def cmd_find_rule(args):
     import re
 
+
+    pattern  = (args.name or "").strip()
+    dport_str = getattr(args, "dport", None)
+
+    if not pattern and not dport_str:
+        warn("Укажите имя/UUID или --dport PORT")
+        return
+
     if getattr(args, "snapshot", None):
         matcher = build_matcher_from_snapshot(args.snapshot)
     elif getattr(args, "rules_file", None):
@@ -870,21 +885,53 @@ def cmd_find_rule(args):
         ok(f"Device Group ID:   {device_group_id}")
         matcher = build_matcher(source, device_group_id)
 
-    pattern = args.name.strip()
-
-    # UUID: 36 символов с дефисами в позициях 8, 13, 18, 23
+   # ── фильтр по имени / UUID ─────────────────────────────────────────────────
     _UUID_RE = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
                           re.IGNORECASE)
-    if _UUID_RE.match(pattern):
-        found = [r for r in matcher.rules if r.uid.lower() == pattern.lower()]
+
+    if pattern:
+        if _UUID_RE.match(pattern):
+            found = [r for r in matcher.rules if r.uid.lower() == pattern.lower()]
+        else:
+            pl = pattern.lower()
+            found = [r for r in matcher.rules if pl in r.name.lower()]
     else:
-        pl = pattern.lower()
-        found = [r for r in matcher.rules if pl in r.name.lower()]
+        found = list(matcher.rules)
+
+    # ── фильтр по порту/протоколу ──────────────────────────────────────────────
+    if dport_str:
+        proto = (getattr(args, "proto", None) or "any").lower()
+        ports = _parse_ports(dport_str)
+        filtered = []
+        any_svc_count = 0
+        for rule in found:
+            services = matcher.resolver.resolve_field_service(rule.service)
+            # Пропускаем правила с чистым service=ANY — они неявно покрывают любой порт,
+            # но пользователь ищет правила с явно прописанным портом.
+            if services == [("any", 0, 65535)]:
+                any_svc_count += 1
+                continue
+            for port in ports:
+                flow = TrafficFlow(
+                    src_ip="0.0.0.0", dst_ip="0.0.0.0",
+                    dst_port=port, protocol=proto,
+                )
+                if matcher._service_matches(flow, services):
+                    filtered.append(rule)
+                    break
+        if any_svc_count:
+            info(f"Пропущено {any_svc_count} правил с service=ANY (охватывают любой порт)")
+        found = filtered
 
     found.sort(key=lambda r: r.index)
 
     if not found:
-        warn(f"Правила не найдены по запросу: {pattern!r}")
+        parts = []
+        if pattern:
+            parts.append(f"имя/UUID: {pattern!r}")
+        if dport_str:
+            parts.append(f"dport: {dport_str}")
+        warn("Правила не найдены по запросу: " + ", ".join(parts))
         return
 
     ok(f"Найдено правил: {len(found)}")
