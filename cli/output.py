@@ -9,6 +9,7 @@ import json
 import sys
 from typing import TextIO
 
+from .._version import __version__
 from ..core.models import MatchResult, NormalizedRule
 
 
@@ -637,6 +638,7 @@ def export_fullview_json(flow_results: list[dict], query: dict, path: str,
     else:
         output = {"query": query, "flows": flows_out}
 
+    output = {"_ngfw_match": _json_meta(), **output}
     with open(path, "w", encoding="utf-8") as f:
         json.dump(output, f, ensure_ascii=False, indent=2)
 
@@ -787,7 +789,7 @@ def export_shadowed_json(results: list[dict], path: str):
             "conflict":            entry["conflict"],
         })
 
-    output = {"total": total, "conflicts": conflicts, "rules": rules_out}
+    output = {"_ngfw_match": _json_meta(), "total": total, "conflicts": conflicts, "rules": rules_out}
     with open(path, "w", encoding="utf-8") as f:
         json.dump(output, f, ensure_ascii=False, indent=2)
     print(c(f"[+] Теневые правила → {path}  ({total} записей)", _C.GREEN))
@@ -832,7 +834,17 @@ def export_csv(results: list[MatchResult], path: str):
             })
     print(c(f"[+] Результаты сохранены → {path}", _C.GREEN))
 
+# ─── Версия ──────────────────────────────────────────────────────────────────
 
+def print_version_footer() -> None:
+    """Однострочный футер с версией — выводится после любой успешной команды."""
+    print(c(f"\n  ngfw-match  v{__version__}", _C.DIM))
+
+
+def _json_meta() -> dict:
+    """Мета-блок для вставки в начало JSON-экспортов."""
+    return {"tool": "ngfw-match", "version": __version__}
+    
 # ─── rule-hits: статистика срабатываний ──────────────────────────────────────
 
 def _fmt_hits(n: int) -> str:

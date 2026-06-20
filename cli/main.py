@@ -32,7 +32,7 @@ if TYPE_CHECKING:
     pass
 from .output import (print_result, print_summary, export_csv, export_fullview_json,
                       print_rule_card, print_shadowed_analysis, export_shadowed_json,
-                      print_hits_table, c, _C)
+                      print_hits_table, print_version_footer, c, _C)
 
 
 # ─── Утилиты ─────────────────────────────────────────────────────────────────
@@ -858,9 +858,10 @@ def _export_find_rule_json(rules: list, path: str):
         }
         for r in rules
     ]
+    from .output import _json_meta
     with open(path, "w", encoding="utf-8") as f:
-        json.dump({"count": len(out), "rules": out}, f, ensure_ascii=False, indent=2)
-    from .output import c, _C
+        json.dump({"_ngfw_match": _json_meta(), "count": len(out), "rules": out},
+                  f, ensure_ascii=False, indent=2)
     print(c(f"[+] Найденные правила → {path}  ({len(out)} записей)", _C.GREEN))
 
 
@@ -1005,6 +1006,7 @@ def main():
             cmd_check_shadowed(args)
         elif args.command == "rule-hits":
             cmd_rule_hits(args)
+        print_version_footer()    
     except KeyboardInterrupt:
         print("\nПрервано.", file=sys.stderr)
         sys.exit(0)
