@@ -135,6 +135,39 @@ def _select_from_device_groups(groups: list,
 
 # ─── Загрузка данных ─────────────────────────────────────────────────────────
 
+def build_matcher_from_snapshot(path: str, strict: bool = True) -> RuleMatcher:
+    """Строит RuleMatcher из снапшота — без обращений к API."""
+    info(f"Снапшот: {path}")
+    with open(path, encoding="utf-8") as f:
+        snap = json.load(f)
+
+    device_group_id   = snap.get("device_group_id", "?")
+    device_group_name = snap.get("device_group_name", "")
+    captured_at       = snap.get("captured_at", "?")
+    if device_group_name:
+        ok(f"Device Group Name: {device_group_name}")
+    ok(f"Device Group ID:   {device_group_id}")
+    ok(f"Снапшот от:        {captured_at}  ({snap.get('rules_count', '?')} правил)")
+
+    raw_list  = snap.get("rules") or []
+    net_cache = snap.get("net_groups") or {}
+    svc_cache = snap.get("svc_groups") or {}
+
+    rules = [_normalize_rule(r, i) for i, r in enumerate(raw_list)]
+    counters: dict[str, int] = {}
+    for rule in rules:
+        counters[rule.precedence] = counters.get(rule.precedence, 0) + 1
+        rule.position_in_precedence = counters[rule.precedence]
+    total_loaded = len(rules)
+    rules = [r for r in rules if r.precedence != "default"]
+    ok(f"Правил загружено: {total_loaded}  →  в анализе PRE+POST: {len(rules)}")
+
+    resolver = ObjectResolver(
+        fetch_net_group=lambda gid: net_cache.get(gid, []),
+        fetch_svc_group=lambda gid: svc_cache.get(gid, []),
+    )
+    return RuleMatcher(rules, resolver, strict=strict)
+
 def build_matcher(source, device_group_id: str,
                   local_rules_path: Optional[str] = None,
                   local_objects_path: Optional[str] = None,
@@ -435,6 +468,13 @@ def maybe_save(args, source, device_group_id: str):
 # ─── Основной поток ──────────────────────────────────────────────────────────
 
 def run(args):
+     # Снапшот-режим
+    if getattr(args, "snapshot", None):
+        strict  = not getattr(args, "overlap", False)
+        matcher = build_matcher_from_snapshot(args.snapshot, strict=strict)
+        _run_flow(args, matcher)
+        return
+
     # Оффлайн-режим: всё из локальных файлов
     if getattr(args, "rules_file", None):
         info("Оффлайн-режим: данные из локальных файлов")
@@ -700,6 +740,7 @@ def build_parser() -> argparse.ArgumentParser:
     m.add_argument("--output",  metavar="FILE.csv", help="Сохранить результаты в CSV")
     m.add_argument("--verbose", "-v", action="store_true")
 
+    m.add_argument("--snapshot",      metavar="FILE.json", help="Снапшот (офлайн, вместо --host)")
     m.add_argument("--save-rules",   metavar="FILE.json", help="Сохранить правила в JSON")
     m.add_argument("--save-objects", metavar="FILE.json", help="Сохранить объекты в JSON")
     m.add_argument("--rules-file",   metavar="FILE.json", help="Правила из локального JSON")
@@ -712,6 +753,7 @@ def build_parser() -> argparse.ArgumentParser:
     fr.add_argument("--source", choices=["ngfw", "backend"], default="ngfw")
     fr.add_argument("--backend-host", metavar="URL")
     fr.add_argument("--device", metavar="DEVICE_GROUP_ID")
+    fr.add_argument("--snapshot",     metavar="FILE.json", help="Снапшот (офлайн)")
     fr.add_argument("--rules-file",   metavar="FILE.json")
     fr.add_argument("--objects-file", metavar="FILE.json")
     fr.add_argument("--output", metavar="FILE.json", help="Экспорт найденных правил в JSON")
@@ -721,9 +763,18 @@ def build_parser() -> argparse.ArgumentParser:
     cs.add_argument("--source", choices=["ngfw", "backend"], default="ngfw")
     cs.add_argument("--backend-host", metavar="URL")
     cs.add_argument("--device", metavar="DEVICE_GROUP_ID")
+    cs.add_argument("--snapshot",     metavar="FILE.json", help="Снапшот (офлайн)")
     cs.add_argument("--rules-file",   metavar="FILE.json")
     cs.add_argument("--objects-file", metavar="FILE.json")
     cs.add_argument("--output", metavar="FILE.json", help="Экспорт результатов в JSON")
+
+    # ── snapshot ───────────────────────────────────────────────────────────────
+    sn = sub.add_parser("snapshot",
+                        help="Сохранить полное состояние политики (правила + группы) в JSON")
+    sn.add_argument("--device", metavar="DEVICE_GROUP_ID",
+                    help="deviceGroupId (если не указан — интерактивный выбор)")
+    sn.add_argument("--out", metavar="FILE.json", default="snapshot.json",
+                    help="Путь к выходному файлу (по умолчанию: snapshot.json)")
 
     # ── rule-hits ──────────────────────────────────────────────────────────────
     rh = sub.add_parser("rule-hits",
@@ -801,7 +852,9 @@ def _row(label: str, value: str):
 def cmd_find_rule(args):
     import re
 
-    if getattr(args, "rules_file", None):
+    if getattr(args, "snapshot", None):
+        matcher = build_matcher_from_snapshot(args.snapshot)
+    elif getattr(args, "rules_file", None):
         info("Оффлайн-режим: данные из локальных файлов")
         matcher = build_matcher(None, "", args.rules_file,
                                 getattr(args, "objects_file", None))
@@ -868,7 +921,9 @@ def _export_find_rule_json(rules: list, path: str):
 # ─── check-shadowed ───────────────────────────────────────────────────────────
 
 def cmd_check_shadowed(args):
-    if getattr(args, "rules_file", None):
+    if getattr(args, "snapshot", None):
+        matcher = build_matcher_from_snapshot(args.snapshot)
+    elif getattr(args, "rules_file", None):
         info("Оффлайн-режим: данные из локальных файлов")
         matcher = build_matcher(None, "", args.rules_file,
                                 getattr(args, "objects_file", None))
@@ -912,6 +967,38 @@ def cmd_check_shadowed(args):
 
     if getattr(args, "output", None):
         export_shadowed_json(results, args.output)
+
+# ─── snapshot ────────────────────────────────────────────────────────────────
+
+def cmd_snapshot(args):
+    source = build_source(args)
+
+    if getattr(args, "device", None):
+        device_group_id   = args.device
+        device_group_name = ""
+    else:
+        device_group_id, device_group_name = select_device(source)
+
+    if device_group_name:
+        ok(f"Device Group Name: {device_group_name}")
+    ok(f"Device Group ID:   {device_group_id}")
+
+    info("Загружаем правила и раскрываем все группы…")
+    snap = source.build_snapshot(device_group_id, device_group_name)
+
+    from .output import _json_meta
+    snap["_ngfw_match"] = _json_meta()
+
+    out_path = args.out
+    with open(out_path, "w", encoding="utf-8") as f:
+        json.dump(snap, f, ensure_ascii=False, indent=2)
+
+    size_kb = len(json.dumps(snap, ensure_ascii=False)) / 1024
+    ok(f"Снапшот сохранён → {out_path}  "
+       f"({snap['rules_count']} правил  "
+       f"{len(snap['net_groups'])} сет.групп  "
+       f"{len(snap['svc_groups'])} серв.групп  "
+       f"{size_kb:.0f} KB)")        
 
 
 # ─── rule-hits ────────────────────────────────────────────────────────────────
@@ -1006,6 +1093,8 @@ def main():
             cmd_check_shadowed(args)
         elif args.command == "rule-hits":
             cmd_rule_hits(args)
+        elif args.command == "snapshot":
+            cmd_snapshot(args)    
         print_version_footer()    
     except KeyboardInterrupt:
         print("\nПрервано.", file=sys.stderr)
