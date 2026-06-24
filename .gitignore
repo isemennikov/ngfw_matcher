@@ -21,11 +21,16 @@ Thumbs.db
 *.json
 *.csv
 
+# Web app runtime data
+data/*.db
+data/snapshots/
+
 # Build / packaging
 dist/
 build/
 *.egg-info/
 pip-wheel-metadata/
+troubleshooting/
 
 # Other
 .idea/
@@ -35,21 +40,3 @@ htmlcov/
 
 openapi.*
 
-# Claude Code directories
-.claude/
-.claude/settings.json
-.claude/settings.local.json
-
-# Conversation and session data
-.claude/conversations/
-.claude/sessions/
-.claude/checkpoints/
-
-# Skills cache and logs
-.claude/skills/.cache/
-.claude/skills/*.log
-.claude/skills/state/
-.claude/skills/tmp/
-
-# История Claude
-.claude-history

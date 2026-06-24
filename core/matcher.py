@@ -291,7 +291,7 @@ class RuleMatcher:
             proto_ok  = svc_proto == "any" or proto == "any" or svc_proto == proto
             if not proto_ok:
                 continue
-            # ICMP/ICMPv6 carry no TCP/UDP port — skip when caller specifies a real port
+            # ICMP/ICMPv6 не имеют TCP/UDP портов — не матчим если задан конкретный порт
             if svc_proto in ("icmp", "icmpv6") and dport > 0:
                 continue
             port_ok   = (dport == 0
@@ -312,7 +312,6 @@ class RuleMatcher:
         # Только правила без явных зон — анализ исключительно по IP/порту
         all_enabled = [r for r in self.rules if r.enabled]
         no_zone     = [
-
             r for r in all_enabled
             if not self.resolver.resolve_field_zone(r.source_zone)
             and not self.resolver.resolve_field_zone(r.destination_zone)
@@ -351,6 +350,57 @@ class RuleMatcher:
                     continue
                 conflict = (a.action != b.action)
                 results.append({"shadowed": b, "by": a, "conflict": conflict})
+
+        return results
+
+    def check_partial_shadowed(self) -> list[dict]:
+        """
+        Для каждой пары (rule_a перед rule_b) проверяет частичное пересечение:
+        src ∩ ≠ ∅  AND  dst ∩ ≠ ∅  AND  svc ∩ ≠ ∅
+        Пропускаются зональные, отключённые, FQDN и app-only правила.
+        """
+        all_enabled = [r for r in self.rules if r.enabled]
+        no_zone = [
+            r for r in all_enabled
+            if not self.resolver.resolve_field_zone(r.source_zone)
+            and not self.resolver.resolve_field_zone(r.destination_zone)
+        ]
+        active = [
+            r for r in no_zone
+            if not self._is_app_only(r)
+            and not self._field_has_fqdn(r.source_addr)
+            and not self._field_has_fqdn(r.destination_addr)
+        ]
+        log.info("check_partial_shadowed: в_анализе=%d", len(active))
+
+        src_nets_cache = {r.uid: self.resolver.resolve_field_network(r.source_addr)      for r in active}
+        dst_nets_cache = {r.uid: self.resolver.resolve_field_network(r.destination_addr) for r in active}
+        svc_cache      = {r.uid: self.resolver.resolve_field_service(r.service)          for r in active}
+
+        results: list[dict] = []
+        n = len(active)
+        for i in range(n):
+            a = active[i]
+            for j in range(i + 1, n):
+                b = active[j]
+                src_a, src_b = src_nets_cache[a.uid], src_nets_cache[b.uid]
+                if not _nets_overlaps(src_a, src_b):
+                    continue
+                dst_a, dst_b = dst_nets_cache[a.uid], dst_nets_cache[b.uid]
+                if not _nets_overlaps(dst_a, dst_b):
+                    continue
+                svc_a, svc_b = svc_cache[a.uid], svc_cache[b.uid]
+                if not _svc_overlaps(svc_a, svc_b):
+                    continue
+                conflict = (a.action != b.action)
+                results.append({
+                    "shadowed":    b,
+                    "by":          a,
+                    "conflict":    conflict,
+                    "overlap_src": _nets_intersection(src_a, src_b),
+                    "overlap_dst": _nets_intersection(dst_a, dst_b),
+                    "overlap_svc": _svc_intersection(svc_a, svc_b),
+                })
 
         return results
 
@@ -405,3 +455,63 @@ def _svc_covers(a_svcs: list, b_svcs: list) -> bool:
         if not covered:
             return False
     return True
+
+
+def _nets_overlaps(a_nets: list, b_nets: list) -> bool:
+    """True если хотя бы одна сеть из a_nets пересекается с хотя бы одной из b_nets."""
+    _zero = {
+        ipaddress.ip_network("0.0.0.0/0"),
+        ipaddress.ip_network("::/0"),
+    }
+    if any(n in _zero for n in a_nets) or any(n in _zero for n in b_nets):
+        return True
+    for a_net in a_nets:
+        for b_net in b_nets:
+            try:
+                if a_net.overlaps(b_net):
+                    return True
+            except TypeError:
+                pass
+    return False
+
+
+def _nets_intersection(a_nets: list, b_nets: list) -> list:
+    """Возвращает подмножество сетей из a_nets которые пересекаются с b_nets."""
+    _zero = {ipaddress.ip_network("0.0.0.0/0"), ipaddress.ip_network("::/0")}
+    if any(n in _zero for n in a_nets):
+        return b_nets
+    if any(n in _zero for n in b_nets):
+        return a_nets
+    result = []
+    for a_net in a_nets:
+        for b_net in b_nets:
+            try:
+                if a_net.overlaps(b_net) and a_net not in result:
+                    result.append(a_net)
+            except TypeError:
+                pass
+    return result
+
+
+def _svc_intersection(a_svcs: list, b_svcs: list) -> list:
+    """Возвращает пересекающиеся сервисы из a_svcs."""
+    result = []
+    for svc_a in a_svcs:
+        a_proto, a_lo, a_hi = svc_a
+        for b_proto, b_lo, b_hi in b_svcs:
+            proto_ok = (a_proto == "any" or b_proto == "any" or a_proto == b_proto)
+            port_ok  = (a_lo <= b_hi and b_lo <= a_hi)
+            if proto_ok and port_ok and svc_a not in result:
+                result.append(svc_a)
+    return result
+
+
+def _svc_overlaps(a_svcs: list, b_svcs: list) -> bool:
+    """True если хотя бы один сервис из a_svcs пересекается с хотя бы одним из b_svcs."""
+    for a_proto, a_lo, a_hi in a_svcs:
+        for b_proto, b_lo, b_hi in b_svcs:
+            proto_ok = (a_proto == "any" or b_proto == "any" or a_proto == b_proto)
+            port_ok  = (a_lo <= b_hi and b_lo <= a_hi)
+            if proto_ok and port_ok:
+                return True
+    return False

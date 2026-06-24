@@ -1,0 +1,56 @@
+{% extends "layout.html" %}
+{% block title %}Find Rule — ngfw-matcher{% endblock %}
+{% block header %}Find Rule{% endblock %}
+{% block content %}
+
+<div class="max-w-3xl">
+  <form hx-post="/find-rule"
+        hx-target="#find-result"
+        hx-swap="innerHTML"
+        hx-indicator="#find-spinner"
+        class="bg-white rounded-xl border border-slate-200 p-6 mb-6">
+
+    <div class="grid grid-cols-3 gap-4 mb-4">
+      <div class="col-span-3 sm:col-span-1">
+        <label class="block text-xs font-medium text-slate-600 mb-1.5">Имя или UUID</label>
+        <input type="text" name="pattern" placeholder="NETBANK_1148 или подстрока"
+               class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm
+                      focus:outline-none focus:border-blue-400 placeholder-slate-400">
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-slate-600 mb-1.5">Port</label>
+        <input type="text" name="dport" placeholder="443  или  пусто"
+               class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm
+                      focus:outline-none focus:border-blue-400 placeholder-slate-400">
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-slate-600 mb-1.5">Protocol</label>
+        <select name="proto" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm
+                                    focus:outline-none focus:border-blue-400">
+          <option value="">any</option>
+          <option value="tcp">TCP</option>
+          <option value="udp">UDP</option>
+          <option value="icmp">ICMP</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="flex items-center gap-4">
+      <button type="submit"
+              class="bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium
+                     px-6 py-2 rounded-lg transition-colors">
+        Найти
+      </button>
+      <span id="find-spinner" class="htmx-indicator flex items-center gap-2 text-sm text-slate-500">
+        <svg class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+        </svg>
+        Ищем…
+      </span>
+    </div>
+  </form>
+
+  <div id="find-result"></div>
+</div>
+{% endblock %}

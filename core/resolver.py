@@ -46,6 +46,16 @@ ANY_SVC = [("any", 0, 65535)]   # (proto_name, port_min, port_max)
 # IANA → имя протокола (только числа из PT NGFW)
 _PROTO = {0: "any", 1: "icmp", 6: "tcp", 17: "udp", 47: "gre",
           50: "esp", 51: "ah", 58: "icmpv6", 89: "ospf", 132: "sctp"}
+PROTO = _PROTO  # публичный алиас для импорта снаружи
+
+_ANY_KINDS = {"RULE_KIND_ANY", "RULE_KIND_UNSPECIFIED", ""}
+
+
+def is_any_kind(field: dict | None) -> bool:
+    """True если поле правила означает «любой» (ANY/UNSPECIFIED/отсутствует)."""
+    if field is None:
+        return True
+    return field.get("kind", "") in _ANY_KINDS
 
 
 def _net(cidr: str) -> list[_NET]:
@@ -91,11 +101,15 @@ class ObjectResolver:
         if kind in ("RULE_KIND_ANY", "RULE_KIND_UNSPECIFIED", ""):
             return ANY_NET
 
+        objects = field.get("objects") or []
+        if not objects:
+            return ANY_NET  # Пустой список объектов = any
+
         nets: list[_NET] = []
-        for obj in field.get("objects") or []:
+        for obj in objects:
             nets.extend(self._resolve_net_object(obj))
 
-        return nets or ANY_NET
+        return nets if nets else []  # [] если все объекты — FQDN/geo
 
     def resolve_field_network_concrete(self, field: dict | None) -> list[_NET]:
         """
@@ -191,20 +205,17 @@ class ObjectResolver:
                 except ValueError as e:
                     log.debug("Bad range %s-%s: %s", start, end, e)
 
-        # networkFqdn → пропускаем (нет DNS-резолвинга)
+        # networkFqdn → не участвует в IP-анализе (нет DNS-резолвинга)
         elif "networkFqdn" in obj:
             fqdn = obj["networkFqdn"].get("fqdn", "?")
             log.debug("Skipping FQDN object: %s", fqdn)
-            # Возвращаем ANY чтобы не блокировать правило с FQDN —
-            # консервативное решение: считаем что FQDN может совпасть.
-            return ANY_NET
+            return []
 
-        # networkGeoAddress → пропускаем (нет GeoIP БД)
+        # networkGeoAddress → не участвует в IP-анализе (нет GeoIP БД)
         elif "networkGeoAddress" in obj:
             geo_id = obj["networkGeoAddress"].get("geoId", "?")
             log.debug("Skipping GeoIP object: geoId=%s", geo_id)
-            # Аналогично — консервативно считаем совпадением
-            return ANY_NET
+            return []
 
         # networkGroup → рекурсия через API
         elif "networkGroup" in obj:

@@ -1,0 +1,16 @@
+{% if status == 'running' %}
+  <div hx-get="/devices/sync/{{ job_id }}/status"
+       hx-trigger="every 2s"
+       hx-swap="outerHTML"
+       class="flex items-center gap-2 text-xs text-blue-400">
+    <svg class="animate-spin w-3 h-3" fill="none" viewBox="0 0 24 24">
+      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+    </svg>
+    {{ message }}
+  </div>
+{% elif status == 'done' %}
+  <div class="text-xs text-green-400">✓ {{ message }}</div>
+{% else %}
+  <div class="text-xs text-red-400">✗ {{ message }}</div>
+{% endif %}

@@ -1,0 +1,171 @@
+{% macro dot(rule, conflict=false) %}
+  {% if conflict %}
+    <span class="thread-dot dot-conflict" title="Конфликт действий"></span>
+  {% elif not rule.enabled %}
+    <span class="thread-dot dot-disabled"></span>
+  {% elif rule.action == 'allow' %}
+    <span class="thread-dot dot-allow"></span>
+  {% else %}
+    <span class="thread-dot dot-deny"></span>
+  {% endif %}
+{% endmacro %}
+
+{% macro action_badge(action) %}
+  {% if action == 'allow' %}
+    <span class="inline-flex px-2 py-0.5 rounded text-xs font-medium bg-green-50 text-green-700 border border-green-200">ALLOW</span>
+  {% else %}
+    <span class="inline-flex px-2 py-0.5 rounded text-xs font-medium bg-red-50 text-red-700 border border-red-200">{{ action | upper }}</span>
+  {% endif %}
+{% endmacro %}
+
+<!-- Шапка -->
+<div class="flex items-center gap-6 mb-6 text-sm flex-wrap">
+  <div class="bg-slate-100 rounded-lg px-4 py-2">
+    <span class="text-slate-500">Проанализировано:</span>
+    <span class="font-semibold text-slate-800 ml-1 font-mono">{{ n_rules }}</span>
+    <span class="text-slate-400 ml-1 text-xs">правил</span>
+  </div>
+  <div class="bg-slate-100 rounded-lg px-4 py-2">
+    <span class="text-slate-500">Найдено пар:</span>
+    <span class="font-semibold text-slate-800 ml-1">{{ total }}</span>
+  </div>
+  {% if conflicts %}
+  <div class="bg-red-50 border border-red-200 rounded-lg px-4 py-2">
+    <span class="text-red-600">⚠ Конфликтов действий:</span>
+    <span class="font-semibold text-red-700 ml-1">{{ conflicts }}</span>
+  </div>
+  {% else %}
+  <div class="bg-green-50 border border-green-200 rounded-lg px-4 py-2 text-green-700 text-xs">
+    ✓ Конфликтов нет
+  </div>
+  {% endif %}
+  {% if mode == 'partial' %}
+  <span class="text-xs text-slate-400 bg-slate-100 rounded px-2 py-1">partial mode</span>
+  {% endif %}
+</div>
+
+<!-- Группы -->
+{% for group in groups %}
+  {% set by = group.by %}
+  {% set has_conflict = group.entries | selectattr('conflict') | list | length > 0 %}
+
+  <div class="bg-white rounded-xl border {% if has_conflict %}border-red-200{% else %}border-slate-200{% endif %} mb-4 overflow-hidden">
+
+    <!-- Корень — перекрывающее правило -->
+    <div class="px-5 py-3 border-b {% if has_conflict %}bg-red-50 border-red-100{% else %}bg-slate-50 border-slate-100{% endif %} flex items-center gap-3">
+      {{ dot(by) }}
+      <div class="flex-1 min-w-0 flex items-center gap-3 flex-wrap">
+        <span class="font-semibold text-sm text-slate-800">{{ by.name }}</span>
+        {{ action_badge(by.action) }}
+        <span class="text-xs text-slate-400">{{ by.precedence | upper }} #{{ by.position_in_precedence or by.index + 1 }}</span>
+        {% if has_conflict %}
+          <span class="text-xs font-medium text-red-600 bg-red-100 px-2 py-0.5 rounded">⚠ КОНФЛИКТ</span>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Ветки — перекрытые правила (git-граф стиль) -->
+    {% for entry in group.entries %}
+      {% set sh = entry.shadowed %}
+      {% set is_last = loop.last %}
+
+      <div class="flex items-stretch border-b border-slate-100 {% if is_last %}border-b-0{% endif %} hover:bg-slate-50 transition-colors">
+
+        <!-- Колонка коннектора 40px -->
+        <div style="width:40px; flex-shrink:0; position:relative;">
+          <!-- Вертикальная линия -->
+          {% if is_last %}
+            <div style="position:absolute; left:23px; top:0; height:17px; width:2px; background:#e2e8f0; border-radius:1px;"></div>
+          {% else %}
+            <div style="position:absolute; left:23px; top:0; bottom:0; width:2px; background:#e2e8f0; border-radius:1px;"></div>
+          {% endif %}
+          <!-- Горизонтальная линия к точке -->
+          <div style="position:absolute; left:23px; top:16px; right:0; height:2px; background:#e2e8f0; border-radius:1px;"></div>
+        </div>
+
+        <!-- Содержимое ветки -->
+        <div class="flex-1 py-3 pr-4 flex items-start gap-3 min-w-0">
+          {{ dot(sh, entry.conflict) }}
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-3 flex-wrap">
+              <span class="font-medium text-sm {% if entry.conflict %}text-red-700{% else %}text-slate-700{% endif %}">
+                {{ sh.name }}
+              </span>
+              {{ action_badge(sh.action) }}
+              <span class="text-xs text-slate-400">{{ sh.precedence | upper }} #{{ sh.position_in_precedence or sh.index + 1 }}</span>
+              {% if entry.conflict %}
+                <span class="text-xs font-medium text-red-600 bg-red-50 border border-red-200 rounded px-1.5 py-0.5">⚠ конфликт</span>
+              {% endif %}
+            </div>
+
+            <!-- Пересечения для partial mode -->
+            {% if mode == 'partial' and entry.overlap_src is defined %}
+              <div class="mt-1.5 flex flex-col gap-0.5 text-xs text-slate-400">
+                <div class="flex items-baseline gap-1 flex-wrap">
+                  <span class="text-slate-300 w-8 flex-shrink-0">∩ src</span>
+                  {% for n in entry.overlap_src[:5] %}<span class="font-mono">{{ n }}</span>{% endfor %}
+                  {% if entry.overlap_src | length > 5 %}<span>+{{ entry.overlap_src | length - 5 }}</span>{% endif %}
+                </div>
+                <div class="flex items-baseline gap-1 flex-wrap">
+                  <span class="text-slate-300 w-8 flex-shrink-0">∩ dst</span>
+                  {% for n in entry.overlap_dst[:5] %}<span class="font-mono">{{ n }}</span>{% endfor %}
+                  {% if entry.overlap_dst | length > 5 %}<span>+{{ entry.overlap_dst | length - 5 }}</span>{% endif %}
+                </div>
+                <div class="flex items-baseline gap-1 flex-wrap">
+                  <span class="text-slate-300 w-8 flex-shrink-0">∩ svc</span>
+                  {% for s in entry.overlap_svc[:5] %}
+                    <span class="font-mono">{{ s[0] | upper }}{% if s[1] != 0 or s[2] != 65535 %}:{{ s[1] }}-{{ s[2] }}{% endif %}</span>
+                  {% endfor %}
+                </div>
+              </div>
+            {% endif %}
+          </div>
+        </div>
+
+      </div>
+    {% endfor %}
+
+  </div>
+{% endfor %}
+
+{% if not groups %}
+  <div class="text-center py-12 text-slate-400">
+    <div class="text-4xl mb-3">✓</div>
+    <div class="text-sm">Теневых правил не найдено</div>
+  </div>
+{% endif %}
+
+{% if total_pages > 1 %}
+<div class="mt-4 flex items-center justify-between">
+  <div class="text-xs text-slate-400">
+    Страница {{ page + 1 }} из {{ total_pages }} · показано {{ groups | length }} из {{ total_groups }} групп
+  </div>
+  <div class="flex items-center gap-2">
+    {% if page > 0 %}
+    <form hx-post="/shadows" hx-target="#shadows-result" hx-swap="innerHTML">
+      <input type="hidden" name="mode" value="{{ mode }}">
+      <input type="hidden" name="page" value="{{ page - 1 }}">
+      <button type="submit" class="px-3 py-1.5 text-xs rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors">
+        ← Назад
+      </button>
+    </form>
+    {% endif %}
+    {% if page < total_pages - 1 %}
+    <form hx-post="/shadows" hx-target="#shadows-result" hx-swap="innerHTML">
+      <input type="hidden" name="mode" value="{{ mode }}">
+      <input type="hidden" name="page" value="{{ page + 1 }}">
+      <button type="submit" class="px-3 py-1.5 text-xs rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors">
+        Вперёд →
+      </button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+<div class="mt-4 flex items-center gap-2 text-xs text-slate-400">
+  <svg class="w-3.5 h-3.5 text-slate-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+  </svg>
+  <span>Локальный расчёт · O(n²) по {{ n_rules }} правилам · запросов в СУ не выполнялось</span>
+</div>
