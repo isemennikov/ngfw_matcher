@@ -1,39 +1,23 @@
+<!-- markdownlint-disable MD024 -->
 # CHANGELOG
 
-
-
-## [1.6.1] — ветка feature/snapshot
-
-### Добавлено
-
-- **`snapshot`** — новая команда: сохраняет правила + рекурсивно раскрытые сетевые
-  и сервисные группы в один JSON-файл.
-
-  В отличие от `--save-rules`, группы содержат полные данные — анализ офлайн
-  даёт точные результаты без fallback к `ANY_NET`.
-
-  Флаги: `--device ID`, `--out FILE.json` (по умолчанию `snapshot.json`).
-
-- **`--snapshot FILE.json`** на командах `match`, `find-rule`, `check-shadowed` —
-  загружает снапшот вместо подключения к API (`--host` не нужен).
-
-  Структура JSON: `_ngfw_match` (мета) + `device_group_id` + `captured_at` +
-  `rules[]` + `net_groups{}` + `svc_groups{}`.
-
-- **`find-rule --dport PORT`** — поиск правил по явно прописанному порту в сервисе.
-  Имя/UUID теперь необязательны; работает офлайн через `--snapshot`.
-  Правила с `service=ANY` пропускаются — они охватывают любой порт неявно.
-  Поддерживает `--proto` для уточнения протокола.
+## [2.0.1] — 2026-06-24
 
 ### Исправлено
 
-- **`match` / `find-rule`**: ICMP-правило ложно срабатывало при запросе `--dport N --proto any`.
-  ICMP хранится как `("icmp", 0, 65535)` — диапазон 0–65535 совпадал с любым портом.
-  Добавлена проверка: ICMP/ICMPv6 пропускается, если пользователь задал конкретный порт (`dport > 0`).
+- **Sync правил**: после обновления СУ PT NGFW `ListSecurityRules` перестал принимать
+  прежние значения `precedence` (`RULE_PRECEDENCE_PRE` / `RULE_PRECEDENCE_POST`).
+  Вендор изменил формат на `"pre"` / `"post"` (lowercase без префикса).
 
----  
+- **Удалён `ListSecurityRules2`**: endpoint объявлен вендором устаревшим.
+  Весь код v2 (cursor-based pagination, NULL-scan workaround) удалён.
+  Единственный актуальный метод — `ListSecurityRules` (offset pagination).
+
+- **Убрана поддержка `precedence=default`**: после обновления СУ существуют
+  только два набора правил — `pre` и `post`.
 
 ---
+
 ## [1.5.1] — ветка fix_check-shadowed
 
 ### Исправлено
@@ -49,6 +33,8 @@
   Оба типа теперь исключаются из анализа — так же как зональные правила.
   Строка статистики в выводе дополнена счётчиком пропущенных FQDN/app-only:
   `зональных: N  FQDN/app-only: M  в анализе: K`
+
+---
 
 ## [1.5.0] — ветка feature/rule-hits
 

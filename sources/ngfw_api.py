@@ -5,7 +5,7 @@
 BASE_URL строится из --host:
     https://10.1.31.100            →  https://10.1.31.100/api/v2
     https://localhost:3223         →  https://localhost:3223/api/v2  (туннель)
-
+    
 Все запросы — POST на {BASE_URL}/{Operation} с JSON-телом.
 """
 from __future__ import annotations
@@ -301,29 +301,33 @@ class NGFWDirectSource:
 
     def get_rules(self, device_group_id: str) -> list[dict]:
         all_rules: list[dict] = []
-        for precedence in ("RULE_PRECEDENCE_PRE", None, "RULE_PRECEDENCE_POST"):
+        for precedence in ("pre", "post"):
             rules = self._list_rules_paged(device_group_id, precedence)
             for r in rules:
-                r["_precedence"] = precedence or "default"
+                r["_precedence"] = precedence
             all_rules.extend(rules)
-            log.info("precedence=%-30s → %d rules", precedence or "default", len(rules))
+            log.info("precedence=%-6s → %d rules", precedence, len(rules))
         all_rules.sort(key=lambda r: r.get("globalPosition", r.get("position", 0)))
         return all_rules
 
-    def _list_rules_paged(self, device_group_id: str, precedence: Optional[str]) -> list[dict]:
-        items:  list[dict]    = []
-        cursor: Optional[str] = None
+    def _list_rules_paged(self, device_group_id: str, precedence: str) -> list[dict]:
+        """Offset-based pagination via ListSecurityRules.
+        ListSecurityRules2 was deprecated by vendor — use v1 only."""
+        items:  list[dict] = []
+        offset: int        = 0
         while True:
-            body: dict = {"limit": PAGE_SIZE, "deviceGroupId": device_group_id}
-            if precedence:
-                body["precedence"] = precedence
-            if cursor:
-                body["cursor"] = cursor
-            resp, _ = self._post("ListSecurityRules2", body)
-            page   = resp.get("items") or []
+            body: dict = {
+                "limit":         PAGE_SIZE,
+                "deviceGroupId": device_group_id,
+                "precedence":    precedence,
+                "offset":        offset,
+            }
+            resp, _ = self._post("ListSecurityRules", body)
+            page  = resp.get("items") or []
+            total = resp.get("total", 0)
             items.extend(page)
-            cursor = resp.get("nextCursor")
-            if not cursor or not page:
+            offset += len(page)
+            if not page or offset >= total:
                 break
         return items
 
@@ -395,76 +399,14 @@ class NGFWDirectSource:
         self._svc_group_cache[group_id] = items
         return items
 
-    # ─── Снапшот ─────────────────────────────────────────────────────────────
-
-    def build_snapshot(self, device_group_id: str, device_group_name: str = "") -> dict:
-        """
-        Загружает правила + содержимое всех групп (сетевых и сервисных).
-        Возвращает dict, пригодный для сохранения в JSON и последующей
-        автономной работы без API.
-        """
-        import datetime
-
-        log.info("Снапшот: загружаем правила…")
-        rules = self.get_rules(device_group_id)
-
-        # ── Собираем ID всех группп из правил ────────────────────────────────
-        net_group_ids: set[str] = set()
-        svc_group_ids: set[str] = set()
-        for rule in rules:
-            _collect_net_groups(rule.get("sourceAddr"),      net_group_ids)
-            _collect_net_groups(rule.get("destinationAddr"), net_group_ids)
-            _collect_svc_groups(rule.get("service"),         svc_group_ids)
-
-        # ── Рекурсивно раскрываем сетевые группы ─────────────────────────────
-        net_groups: dict[str, list] = {}
-        queue = list(net_group_ids)
-        while queue:
-            gid = queue.pop()
-            if gid in net_groups:
-                continue
-            members = self.get_network_group_items(gid)
-            net_groups[gid] = members
-            nested: set[str] = set()
-            _collect_net_groups_from_items(members, nested)
-            queue.extend(nested - net_groups.keys())
-        log.info("Сетевых групп: %d", len(net_groups))
-
-        # ── Рекурсивно раскрываем сервисные группы ────────────────────────────
-        svc_groups: dict[str, list] = {}
-        queue = list(svc_group_ids)
-        while queue:
-            gid = queue.pop()
-            if gid in svc_groups:
-                continue
-            members = self.get_service_group_items(gid)
-            svc_groups[gid] = members
-            nested = set()
-            for item in members:
-                if "serviceGroup" in item:
-                    ngid = item["serviceGroup"].get("id")
-                    if ngid:
-                        nested.add(ngid)
-            queue.extend(nested - svc_groups.keys())
-        log.info("Сервисных групп: %d", len(svc_groups))
-
-        return {
-            "device_group_id":   device_group_id,
-            "device_group_name": device_group_name,
-            "captured_at":       datetime.datetime.now().isoformat(timespec="seconds"),
-            "rules_count":       len(rules),
-            "rules":             rules,
-            "net_groups":        net_groups,
-            "svc_groups":        svc_groups,
-        }    
-
     # ─── Статистика срабатываний ─────────────────────────────────────────────
 
-    def get_rule_hits(self, rule_ids: list[str], batch_size: int = 30) -> list[dict]:
+    def get_rule_hits(self, rule_ids: list[str], batch_size: int = 100) -> list[dict]:
         """
-        Запрашивает hits-счётчики для списка правил батчами.
-        POST /api/v2/ListMetricsRulesStats { ruleIds: [...] }
+        Запрашивает hits-счётчики батчами.
+        POST /api/v2/ListMetricsRulesStats { ruleIds: [...100 ID...] }
         → { rules: [{ ruleId, hits, bytesRx, bytesTx }] }
+        batch_size=100: при 800 правилах = 8 последовательных запросов к СУ.
         """
         results: list[dict] = []
         for i in range(0, len(rule_ids), batch_size):
@@ -475,35 +417,3 @@ class NGFWDirectSource:
             except Exception as e:
                 log.warning("ListMetricsRulesStats batch %d-%d: %s", i, i + len(batch), e)
         return results
-
-#-─── Вспомогательные функции для build_snapshot ──────────────────────────────
-
-def _collect_net_groups(field: dict | None, result: set[str]) -> None:
-    """Собирает ID networkGroup из RuleFieldNetwork (верхний уровень)."""
-    if not field or field.get("kind") != "RULE_KIND_LIST":
-        return
-    for obj in (field.get("objects") or []):
-        if "networkGroup" in obj:
-            gid = obj["networkGroup"].get("id")
-            if gid:
-                result.add(gid)
-
-
-def _collect_net_groups_from_items(members: list, result: set[str]) -> None:
-    """Собирает ID вложенных networkGroup из раскрытых элементов группы."""
-    for obj in members:
-        if "networkGroup" in obj:
-            gid = obj["networkGroup"].get("id")
-            if gid:
-                result.add(gid)
-
-
-def _collect_svc_groups(field: dict | None, result: set[str]) -> None:
-    """Собирает ID serviceGroup из RuleFieldService."""
-    if not field or field.get("kind") != "RULE_KIND_LIST":
-        return
-    for item in (field.get("objects") or []):
-        if "serviceGroup" in item:
-            gid = item["serviceGroup"].get("id")
-            if gid:
-                result.add(gid)

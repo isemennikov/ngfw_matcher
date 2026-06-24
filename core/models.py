@@ -1,3 +1,4 @@
+# Developed by Ilya Semennikov
 """
 Модели данных.
 """

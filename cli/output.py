@@ -11,6 +11,8 @@ from typing import TextIO
 
 from .._version import __version__
 from ..core.models import MatchResult, NormalizedRule
+from ..core.resolver import PROTO, is_any_kind
+from ..core.utils import port_str as _port_str
 
 
 # ─── ANSI цвета ──────────────────────────────────────────────────────────────
@@ -36,6 +38,87 @@ def c(text, *codes) -> str:
     if _no_color():
         return str(text)
     return "".join(codes) + str(text) + _C.RESET
+
+
+# ─── CLI log helpers ─────────────────────────────────────────────────────────
+
+def info(msg: str):  print(c(f"[*] {msg}", _C.BLUE),   file=sys.stderr)
+def ok(msg: str):    print(c(f"[+] {msg}", _C.GREEN),  file=sys.stderr)
+def warn(msg: str):  print(c(f"[!] {msg}", _C.YELLOW), file=sys.stderr)
+def err(msg: str):   print(c(f"[✗] {msg}", _C.RED),    file=sys.stderr)
+
+
+def die(msg: str, code: int = 1):
+    err(msg)
+    sys.exit(code)
+
+
+def _row(label: str, value: str):
+    print(f"  {c(label + ':', _C.DIM):<24} {value}")
+
+
+def _print_rules_list(rules: list[NormalizedRule]):
+    print(f"\n  {'#':>5}  {'Статус':8}  {'Действие':8}  {'Набор':8}  Имя")
+    print("  " + "─" * 70)
+    for r in rules:
+        st  = c("ON ", _C.GREEN)  if r.enabled else c("OFF", _C.YELLOW)
+        act = c("ALLOW", _C.GREEN) if r.action == "allow" else c("DENY ", _C.RED)
+        print(f"  {r.index+1:>5}  {st}       {act}    {r.precedence:8}  {r.name[:42]}")
+    print()
+
+
+def _print_connection_banner(src):
+    from ..sources.ngfw_api import NGFWDirectSource
+    from ..sources.backend_api import NGFWBackendSource
+    print(file=sys.stderr)
+    print(c("  ┌─ Подключение ──────────────────────────────────────────────┐", _C.DIM), file=sys.stderr)
+    if isinstance(src, NGFWDirectSource):
+        print(c(f"  │  BASE_URL : {src.base_url}", _C.DIM), file=sys.stderr)
+    elif isinstance(src, NGFWBackendSource):
+        print(c(f"  │  Backend  : {src.host}", _C.DIM), file=sys.stderr)
+    print(c("  └────────────────────────────────────────────────────────────┘", _C.DIM), file=sys.stderr)
+    print(file=sys.stderr)
+
+
+# ─── Thread-нить: Unicode box-drawing символы ────────────────────────────────
+
+_TH_ROOT   = "  "      # отступ корня (● добавляет _rule_dot)
+_TH_VERT   = "  │  "  # вертикальная нить
+_TH_BRANCH = "  ├─"   # промежуточная ветка (● добавляет _rule_dot)
+_TH_LAST   = "  └─"   # последняя ветка
+_TH_CONT   = "  │  "  # отступ под промежуточной веткой
+_TH_END    = "     "  # отступ под последней веткой
+
+
+def _rule_dot(rule: NormalizedRule) -> str:
+    """Цветная точка ● в цвет действия правила."""
+    clr = _C.GREEN if rule.action == "allow" else _C.RED
+    if not rule.enabled:
+        clr = _C.DIM
+    return c("●", clr, _C.BOLD)
+
+
+def _rule_label(rule: NormalizedRule) -> str:
+    """Имя + позиция + действие в одну строку."""
+    pos    = rule.position_in_precedence or (rule.index + 1)
+    aclr   = _C.GREEN if rule.action == "allow" else _C.RED
+    action = c(rule.action.upper(), aclr, _C.BOLD)
+    prec   = c(rule.precedence, _C.CYAN)
+    gidx   = c(f"(#{rule.index + 1})", _C.DIM)
+    en     = "" if rule.enabled else c("  [off]", _C.DIM)
+    return f"{c(rule.name, _C.CYAN, _C.BOLD)}  #{pos} {prec}  {action}  {gidx}{en}"
+
+
+def _shadow_label(rule: NormalizedRule, note: str = "") -> str:
+    """Метка теневого правила (без жирного)."""
+    pos    = rule.position_in_precedence or (rule.index + 1)
+    aclr   = _C.GREEN if rule.action == "allow" else _C.RED
+    action = c(rule.action.upper(), aclr)
+    prec   = c(rule.precedence, _C.DIM)
+    gidx   = c(f"(#{rule.index + 1})", _C.DIM)
+    note_s = c(f"  [{note}]", _C.DIM) if note else ""
+    en     = "" if rule.enabled else c("  [off]", _C.DIM)
+    return f"{c(rule.name, _C.YELLOW)}  #{pos} {prec}  {action}  {gidx}{en}{note_s}"
 
 
 # ─── Вывод одного результата ─────────────────────────────────────────────────
@@ -114,60 +197,48 @@ def print_result(result: MatchResult, verbose: bool = False, out: TextIO = sys.s
         w(f"  {c('✗', _C.RED, _C.BOLD)}  Ни одно правило не совпало "
           f"→ {c('default-deny', _C.RED, _C.BOLD)}\n")
     else:
-        r      = result.matched
-        action = r.action.upper()
-        aclr   = _C.GREEN if r.action == "allow" else _C.RED
+        r = result.matched
 
-        w(f"  {c('✓', _C.GREEN, _C.BOLD)}  {c(r.name, _C.CYAN, _C.BOLD)}\n")
-        # Позиция внутри набора — как в СУ
-        pos_in_prec = r.position_in_precedence or (r.index + 1)
-        w(f"     Позиция   : #{pos_in_prec}  в наборе {c(r.precedence, _C.CYAN)}  "
-          f"{c(f'(глобальная #{r.index + 1})', _C.DIM)}\n")
-        w(f"     UUID      : {c(r.uid, _C.DIM)}\n")
-        w(f"     Действие  : {c(action, aclr, _C.BOLD)}\n")
-        w(f"     Включено  : {'да' if r.enabled else c('нет', _C.YELLOW)}\n")
+        # ── Корень нити: сработавшее правило ─────────────────────────────────
+        w(f"{_TH_ROOT}{_rule_dot(r)}  {_rule_label(r)}\n")
 
-        # Аннотация совпадения сети (суперсеть / подсеть)
+        # Дополнительные поля под корнем
         note = result.match_notes.get(r.uid, "")
         if note:
-            note_parts = _format_match_note(note)
-            w(f"     Охват сети : {c(note_parts, _C.YELLOW)}\n")
+            w(f"{_TH_VERT}     {c('охват: ' + _format_match_note(note), _C.YELLOW)}\n")
+        w(f"{_TH_VERT}     {c('UUID: ' + r.uid, _C.DIM)}\n")
 
-        # Приложения — показываем всегда, если заданы явно (L7-правило)
         app_names = _get_app_names(r)
         if app_names:
             apps_str = ", ".join(app_names[:8])
             if len(app_names) > 8:
                 apps_str += c(f"  … (+{len(app_names) - 8})", _C.DIM)
-            w(f"     Приложение: {c(apps_str, _C.YELLOW)}  "
-              f"{c('[L7 — порт не ограничен]', _C.DIM)}\n")
+            w(f"{_TH_VERT}     {c('L7: ' + apps_str, _C.YELLOW)}"
+              f"  {c('[порт не ограничен]', _C.DIM)}\n")
 
         if fullview:
             _print_field_expansion(r, fetch_net_group, fetch_svc_group, out)
-
         if verbose:
             _print_rule_fields(r, out)
 
-    # ── Блок 1: чистые дубли по IP/порту — реальные кандидаты на удаление ──────
-    if result.shadowed:
-        w(f"\n  {c('⚠  Теневые правила (дубли по IP/порту/протоколу):', _C.YELLOW, _C.BOLD)} "
-          f"{c(f'({len(result.shadowed)} шт.)', _C.YELLOW)}\n")
-        for dup in result.shadowed:
-            action_str = c(dup.action.upper(), _C.GREEN if dup.action == "allow" else _C.RED)
-            dup_pos    = dup.position_in_precedence or (dup.index + 1)
-            dup_note   = result.match_notes.get(dup.uid, "")
-            note_str   = c(f"  [{dup_note}]", _C.DIM) if dup_note else ""
-            w(f"     [#{dup_pos} в {dup.precedence}] {c(dup.name, _C.YELLOW)}"
-              f"  →  {action_str}"
-              f"{note_str}"
-              f"  {c(f'(глобальная #{dup.index + 1})', _C.DIM)}\n")
-            if fullview:
-                src_lines = _format_field_lines(dup.source_addr, fetch_net_group, max_items=5)
-                dst_lines = _format_field_lines(dup.destination_addr, fetch_net_group, max_items=5)
-                src_first = src_lines[0] if src_lines else "ANY"
-                dst_first = dst_lines[0] if dst_lines else "ANY"
-                w(f"       {c('src:', _C.DIM)} {src_first}  {c('dst:', _C.DIM)} {dst_first}\n")
-        w(f"  {c('  → Кандидаты на удаление — перекрыты правилом выше.', _C.YELLOW)}\n")
+        # ── Ветки нити: теневые правила ──────────────────────────────────────
+        if result.shadowed:
+            w(f"{_TH_VERT}\n")
+            shadows = result.shadowed
+            for i, dup in enumerate(shadows):
+                is_last = (i == len(shadows) - 1)
+                prefix  = _TH_LAST if is_last else _TH_BRANCH
+                indent  = _TH_END  if is_last else _TH_CONT
+                dup_note = result.match_notes.get(dup.uid, "")
+                w(f"{prefix}{_rule_dot(dup)}  {_shadow_label(dup, dup_note)}\n")
+                if fullview:
+                    src_lines = _format_field_lines(dup.source_addr, fetch_net_group, max_items=3)
+                    dst_lines = _format_field_lines(dup.destination_addr, fetch_net_group, max_items=3)
+                    src_first = src_lines[0] if src_lines else "ANY"
+                    dst_first = dst_lines[0] if dst_lines else "ANY"
+                    w(f"{indent}  {c('src:', _C.DIM)} {src_first}"
+                      f"  {c('dst:', _C.DIM)} {dst_first}\n")
+            w(f"{c('  → Кандидаты на удаление — перекрыты правилом выше.', _C.YELLOW)}\n")
 
     # ── Блок 2: L7-правила (service=ANY, application=LIST) — не проверялись ──
     if result.skipped_app:
@@ -223,7 +294,7 @@ def _print_field_expansion(rule: NormalizedRule, fetch_net_group, fetch_svc_grou
     """Выводит раскрытые поля Source/Destination для --fullview."""
     for label, field in (("Source", rule.source_addr), ("Destination", rule.destination_addr)):
         out.write(f"     {c(label + ':', _C.DIM)}\n")
-        if field is None or field.get("kind") in ("RULE_KIND_ANY", "RULE_KIND_UNSPECIFIED", ""):
+        if is_any_kind(field):
             out.write(f"       ANY\n")
         else:
             for obj in (field.get("objects") or []):
@@ -238,7 +309,7 @@ def _format_field_lines(field: dict | None, fetch_group=None, max_items: int = 5
     Возвращает список строк для отображения RuleFieldNetwork.
     Группы раскрываются (усекаются до max_items).
     """
-    if field is None or field.get("kind") in ("RULE_KIND_ANY", "RULE_KIND_UNSPECIFIED", ""):
+    if is_any_kind(field):
         return ["ANY"]
 
     lines: list[str] = []
@@ -294,7 +365,7 @@ def _format_net_obj_lines(obj: dict, fetch_group, max_items: int, indent: str) -
 
 def _format_svc_field_lines(field: dict | None, fetch_group=None, max_items: int = 5) -> list[str]:
     """Возвращает строки для RuleFieldService."""
-    if field is None or field.get("kind") in ("RULE_KIND_ANY", "RULE_KIND_UNSPECIFIED", ""):
+    if is_any_kind(field):
         return ["ANY"]
     lines: list[str] = []
     for item in (field.get("objects") or []):
@@ -303,12 +374,9 @@ def _format_svc_field_lines(field: dict | None, fetch_group=None, max_items: int
 
 
 def _format_svc_item_lines(item: dict, fetch_group, max_items: int) -> list[str]:
-    _PROTO = {0: "any", 1: "icmp", 6: "tcp", 17: "udp", 47: "gre",
-              50: "esp", 51: "ah", 58: "icmpv6", 89: "ospf", 132: "sctp"}
-
     if "service" in item:
         svc   = item["service"]
-        proto = _PROTO.get(svc.get("protocol", 0), str(svc.get("protocol", 0)))
+        proto = PROTO.get(svc.get("protocol", 0), str(svc.get("protocol", 0)))
         ports = [_port_str(sp) for sp in (svc.get("dstPorts") or [])]
         if ports:
             return [f"{proto}/{','.join(ports)}"]
@@ -376,10 +444,6 @@ def print_summary(results: list[MatchResult], out: TextIO = sys.stdout):
 
 # ─── Fullview JSON ───────────────────────────────────────────────────────────
 
-_PROTO_NAMES = {0: "any", 1: "icmp", 6: "tcp", 17: "udp", 47: "gre",
-                50: "esp", 51: "ah", 58: "icmpv6", 89: "ospf", 132: "sctp"}
-
-
 def _serialize_net_obj(obj: dict, fetch_group=None, _depth: int = 0) -> dict:
     if "networkIpAddress" in obj:
         a = obj["networkIpAddress"]
@@ -410,11 +474,10 @@ def _serialize_net_obj(obj: dict, fetch_group=None, _depth: int = 0) -> dict:
 def _serialize_net_field(field: dict | None, fetch_group=None) -> dict:
     if field is None:
         return {"kind": "RULE_KIND_ANY"}
-    kind = field.get("kind", "RULE_KIND_ANY")
-    if kind in ("RULE_KIND_ANY", "RULE_KIND_UNSPECIFIED", ""):
+    if is_any_kind(field):
         return {"kind": "RULE_KIND_ANY"}
     objects = [_serialize_net_obj(obj, fetch_group) for obj in (field.get("objects") or [])]
-    return {"kind": kind, "objects": objects}
+    return {"kind": field.get("kind", "RULE_KIND_LIST"), "objects": objects}
 
 
 # ── Фильтрующий вариант для поля source ──────────────────────────────────────
@@ -514,8 +577,7 @@ def _serialize_src_field(field: dict | None, src_str: str, fetch_group=None) -> 
     """
     if field is None:
         return {"kind": "RULE_KIND_ANY"}
-    kind = field.get("kind", "RULE_KIND_ANY")
-    if kind in ("RULE_KIND_ANY", "RULE_KIND_UNSPECIFIED", ""):
+    if is_any_kind(field):
         return {"kind": "RULE_KIND_ANY"}
 
     try:
@@ -533,18 +595,10 @@ def _serialize_src_field(field: dict | None, src_str: str, fetch_group=None) -> 
     return {"kind": kind, "objects": [o for o in objects if o is not None]}
 
 
-def _port_str(sp: dict) -> str:
-    if "singlePort" in sp:
-        return str(sp["singlePort"].get("port", "?"))
-    if "portRange" in sp:
-        return f"{sp['portRange'].get('from','?')}-{sp['portRange'].get('to','?')}"
-    return "?"
-
-
 def _serialize_svc_obj(item: dict, fetch_group=None, _depth: int = 0) -> dict:
     if "service" in item:
         svc = item["service"]
-        proto = _PROTO_NAMES.get(svc.get("protocol", 0), str(svc.get("protocol", 0)))
+        proto = PROTO.get(svc.get("protocol", 0), str(svc.get("protocol", 0)))
         entry: dict = {"type": "service", "id": svc.get("id"), "protocol": proto}
         dst_ports = [_port_str(sp) for sp in (svc.get("dstPorts") or [])]
         src_ports = [_port_str(sp) for sp in (svc.get("srcPorts") or [])]
@@ -568,13 +622,10 @@ def _serialize_svc_obj(item: dict, fetch_group=None, _depth: int = 0) -> dict:
 
 
 def _serialize_svc_field(field: dict | None, fetch_group=None) -> dict:
-    if field is None:
-        return {"kind": "RULE_KIND_ANY"}
-    kind = field.get("kind", "RULE_KIND_ANY")
-    if kind in ("RULE_KIND_ANY", "RULE_KIND_UNSPECIFIED", ""):
+    if is_any_kind(field):
         return {"kind": "RULE_KIND_ANY"}
     objects = [_serialize_svc_obj(item, fetch_group) for item in (field.get("objects") or [])]
-    return {"kind": kind, "objects": objects}
+    return {"kind": field.get("kind", "RULE_KIND_LIST"), "objects": objects}
 
 
 def _serialize_app_field(field: dict | None) -> dict | None:
@@ -638,7 +689,7 @@ def export_fullview_json(flow_results: list[dict], query: dict, path: str,
     else:
         output = {"query": query, "flows": flows_out}
 
-    output = {"_ngfw_match": _json_meta(), **output}
+    output = {"_ngfw_matcher": _json_meta(), **output}
     with open(path, "w", encoding="utf-8") as f:
         json.dump(output, f, ensure_ascii=False, indent=2)
 
@@ -746,25 +797,136 @@ def print_shadowed_analysis(results: list[dict], out: TextIO = sys.stdout):
               f"  {c('← ALLOW перекрыт DENY или наоборот', _C.DIM) if conflicts else ''}\n")
     out.write(c("═" * 71 + "\n\n", _C.BOLD))
 
+    # Группируем по "by"-правилу, сохраняем порядок первого появления
+    seen_by: dict[str, list[dict]] = {}
     for entry in results:
-        sh  = entry["shadowed"]
-        by  = entry["by"]
-        con = entry["conflict"]
+        key = entry["by"].uid
+        seen_by.setdefault(key, []).append(entry)
 
-        sh_pos  = sh.position_in_precedence or (sh.index + 1)
-        by_pos  = by.position_in_precedence or (by.index + 1)
-        sh_act  = c(sh.action.upper(), _C.GREEN if sh.action == "allow" else _C.RED)
-        by_act  = c(by.action.upper(), _C.GREEN if by.action == "allow" else _C.RED)
+    for by_uid, entries in seen_by.items():
+        by  = entries[0]["by"]
+        has_conflict = any(e["conflict"] for e in entries)
 
-        if con:
-            out.write(f"  {c('⚠  КОНФЛИКТ', _C.RED, _C.BOLD)}  "
-                      f"#{sh_pos} [{sh.precedence}] {c(sh.name, _C.YELLOW)}  →  {sh_act}\n")
-            out.write(f"               {c('← перекрывается', _C.DIM)}  "
-                      f"#{by_pos} [{by.precedence}] {c(by.name, _C.CYAN)}  →  {by_act}\n\n")
-        else:
-            out.write(f"     #{sh_pos} [{sh.precedence}] {c(sh.name, _C.DIM)}  →  {sh_act}\n")
-            out.write(f"      {c('← перекрывается', _C.DIM)}  "
-                      f"#{by_pos} [{by.precedence}] {c(by.name, _C.CYAN)}  →  {by_act}\n\n")
+        # Корень нити — перекрывающее правило
+        conflict_mark = c("  ⚠ КОНФЛИКТ", _C.RED, _C.BOLD) if has_conflict else ""
+        out.write(f"{_TH_ROOT}{_rule_dot(by)}  {_rule_label(by)}{conflict_mark}\n")
+        out.write(f"{_TH_VERT}\n")
+
+        # Ветки — перекрытые правила
+        for i, entry in enumerate(entries):
+            sh      = entry["shadowed"]
+            con     = entry["conflict"]
+            is_last = (i == len(entries) - 1)
+            prefix  = _TH_LAST if is_last else _TH_BRANCH
+            conflict_s = c("  ⚠", _C.RED) if con else ""
+            out.write(f"{prefix}{_rule_dot(sh)}  {_shadow_label(sh)}{conflict_s}\n")
+
+        out.write("\n")
+
+
+# ─── partial-shadow вывод ─────────────────────────────────────────────────────
+
+_ANY_NETS = {"0.0.0.0/0", "::/0"}
+
+
+def _fmt_nets(nets: list, limit: int = 4) -> str:
+    """Дедуплицирует сети, заменяет 0.0.0.0/0 на ANY, форматирует список."""
+    seen: list[str] = []
+    seen_set: set[str] = set()
+    for n in nets:
+        s = str(n)
+        if s in _ANY_NETS:
+            s = "ANY"
+        if s not in seen_set:
+            seen_set.add(s)
+            seen.append(s)
+        if "ANY" in seen_set:
+            return "ANY"  # достаточно одного ANY
+    if not seen:
+        return "—"
+    extra = len(seen) - limit
+    result = ", ".join(seen[:limit])
+    if extra > 0:
+        result += f" +{extra}"
+    return result
+
+
+def _fmt_svcs(svcs: list, limit: int = 6) -> str:
+    """Дедуплицирует сервисы и форматирует список."""
+    seen: list[str] = []
+    seen_set: set[str] = set()
+    for s in svcs:
+        label = _fmt_svc_overlap(*s)
+        if label not in seen_set:
+            seen_set.add(label)
+            seen.append(label)
+        if label == "ANY":
+            return "ANY"
+    if not seen:
+        return "—"
+    extra = len(seen) - limit
+    result = ", ".join(seen[:limit])
+    if extra > 0:
+        result += f" +{extra}"
+    return result
+
+
+def _fmt_svc_overlap(proto: str, lo: int, hi: int) -> str:
+    if proto == "any":
+        return "ANY"
+    if proto in ("icmp", "icmpv6"):
+        return proto.upper()
+    if lo == 0 and hi == 65535:
+        return proto.upper()
+    if lo == hi:
+        return f"{proto.upper()}:{lo}"
+    return f"{proto.upper()}:{lo}-{hi}"
+
+
+def print_partial_shadowed_analysis(results: list[dict], out: TextIO = sys.stdout):
+    total     = len(results)
+    conflicts = sum(1 for r in results if r["conflict"])
+
+    out.write(c("\n" + "═" * 71 + "\n", _C.BOLD))
+    out.write(c("  ЧАСТИЧНОЕ ЗАТЕМНЕНИЕ ПРАВИЛ\n", _C.BOLD))
+    out.write(c("═" * 71 + "\n", _C.BOLD))
+    out.write(f"  Найдено пар с пересечением: {total}\n")
+    out.write(f"  Конфликтов действий       : {c(conflicts, _C.RED if conflicts else _C.GREEN)}"
+              f"  {c('← ALLOW пересекается с DENY', _C.DIM) if conflicts else ''}\n")
+    out.write(c("─" * 71 + "\n", _C.DIM))
+    out.write(c("  Показаны только частичные пересечения (полные тени исключены).\n", _C.DIM))
+    out.write(c("  Серым выделены значения объектов которые пересекаются.\n", _C.DIM))
+    out.write(c("═" * 71 + "\n\n", _C.BOLD))
+
+    # Группируем по "by"-правилу
+    seen_by: dict[str, list[dict]] = {}
+    for entry in results:
+        seen_by.setdefault(entry["by"].uid, []).append(entry)
+
+    for by_uid, entries in seen_by.items():
+        by = entries[0]["by"]
+        has_conflict = any(e["conflict"] for e in entries)
+        conflict_mark = c("  ⚠ КОНФЛИКТ", _C.RED, _C.BOLD) if has_conflict else ""
+
+        out.write(f"{_TH_ROOT}{_rule_dot(by)}  {_rule_label(by)}{conflict_mark}\n")
+        out.write(f"{_TH_VERT}\n")
+
+        for i, entry in enumerate(entries):
+            sh      = entry["shadowed"]
+            con     = entry["conflict"]
+            is_last = (i == len(entries) - 1)
+            prefix  = _TH_LAST if is_last else _TH_BRANCH
+            indent  = _TH_END  if is_last else _TH_CONT
+            conflict_s = c("  ⚠", _C.RED) if con else ""
+
+            out.write(f"{prefix}{_rule_dot(sh)}  {_shadow_label(sh)}{conflict_s}\n")
+
+            # Пересекающиеся объекты — серым (DIM), дедупликация + ANY вместо 0.0.0.0/0
+            out.write(f"{indent}  {c('∩ src', _C.DIM)}  {c(_fmt_nets(entry['overlap_src']), _C.DIM)}\n")
+            out.write(f"{indent}  {c('∩ dst', _C.DIM)}  {c(_fmt_nets(entry['overlap_dst']), _C.DIM)}\n")
+            out.write(f"{indent}  {c('∩ svc', _C.DIM)}  {c(_fmt_svcs(entry['overlap_svc']), _C.DIM)}\n")
+
+        out.write("\n")
 
 
 def export_shadowed_json(results: list[dict], path: str):
@@ -789,7 +951,7 @@ def export_shadowed_json(results: list[dict], path: str):
             "conflict":            entry["conflict"],
         })
 
-    output = {"_ngfw_match": _json_meta(), "total": total, "conflicts": conflicts, "rules": rules_out}
+    output = {"_ngfw_matcher": _json_meta(), "total": total, "conflicts": conflicts, "rules": rules_out}
     with open(path, "w", encoding="utf-8") as f:
         json.dump(output, f, ensure_ascii=False, indent=2)
     print(c(f"[+] Теневые правила → {path}  ({total} записей)", _C.GREEN))
@@ -834,17 +996,19 @@ def export_csv(results: list[MatchResult], path: str):
             })
     print(c(f"[+] Результаты сохранены → {path}", _C.GREEN))
 
+
 # ─── Версия ──────────────────────────────────────────────────────────────────
 
 def print_version_footer() -> None:
     """Однострочный футер с версией — выводится после любой успешной команды."""
-    print(c(f"\n  ngfw-match  v{__version__}", _C.DIM))
+    print(c(f"\n  ngfw-matcher  v{__version__}", _C.DIM))
 
 
 def _json_meta() -> dict:
     """Мета-блок для вставки в начало JSON-экспортов."""
-    return {"tool": "ngfw-match", "version": __version__}
-    
+    return {"tool": "ngfw-matcher", "version": __version__}
+
+
 # ─── rule-hits: статистика срабатываний ──────────────────────────────────────
 
 def _fmt_hits(n: int) -> str:

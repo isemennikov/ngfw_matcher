@@ -1,0 +1,73 @@
+{% macro action_badge(action) %}
+  {% if action == 'allow' %}
+    <span class="inline-flex px-2 py-0.5 rounded text-xs font-medium bg-green-50 text-green-700 border border-green-200">ALLOW</span>
+  {% else %}
+    <span class="inline-flex px-2 py-0.5 rounded text-xs font-medium bg-red-50 text-red-700 border border-red-200">{{ action | upper }}</span>
+  {% endif %}
+{% endmacro %}
+
+{% macro addr_list(items, limit=6) %}
+  {% if items == ['ANY'] %}
+    <span class="text-slate-400 italic text-xs">ANY</span>
+  {% else %}
+    <div class="flex flex-wrap gap-1 mt-1">
+    {% for item in items[:limit] %}
+      <span class="font-mono text-xs bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5">{{ item }}</span>
+    {% endfor %}
+    {% if items | length > limit %}
+      <span class="text-xs text-slate-400">+{{ items | length - limit }}</span>
+    {% endif %}
+    </div>
+  {% endif %}
+{% endmacro %}
+
+<div class="text-xs text-slate-500 mb-4 flex items-center justify-between">
+  <span>Найдено: <span class="font-semibold text-slate-700">{{ total }}</span>
+  из <span class="font-mono">{{ n_rules }}</span> правил
+  {% if total > 50 %}<span class="text-amber-500"> (показано первые 50)</span>{% endif %}</span>
+  <span class="flex items-center gap-1 text-slate-400">
+    <svg class="w-3 h-3 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+      <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+    </svg>
+    локальный расчёт
+  </span>
+</div>
+
+{% for card in cards %}
+  {% set r = card.rule %}
+  <div class="bg-white rounded-xl border border-slate-200 mb-3 overflow-hidden hover:border-slate-300 transition-colors">
+    <!-- Заголовок карточки -->
+    <div class="px-5 py-3 border-b border-slate-100 flex items-center gap-3 flex-wrap
+      {% if r.action == 'allow' %}bg-green-50{% else %}bg-red-50{% endif %}">
+      <span class="font-semibold text-sm text-slate-800">{{ r.name }}</span>
+      {{ action_badge(r.action) }}
+      {% if not r.enabled %}
+        <span class="text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded">выключено</span>
+      {% endif %}
+      <span class="text-xs text-slate-400 ml-auto">{{ r.precedence | upper }} #{{ r.position_in_precedence or r.index + 1 }} · глоб. #{{ r.index + 1 }}</span>
+    </div>
+
+    <!-- Поля -->
+    <div class="px-5 py-3 grid grid-cols-3 gap-4 text-xs">
+      <div>
+        <div class="text-slate-400 font-medium mb-1">Source</div>
+        {{ addr_list(card.src) }}
+      </div>
+      <div>
+        <div class="text-slate-400 font-medium mb-1">Destination</div>
+        {{ addr_list(card.dst) }}
+      </div>
+      <div>
+        <div class="text-slate-400 font-medium mb-1">Service</div>
+        {{ addr_list(card.svc) }}
+      </div>
+    </div>
+
+    <!-- UUID -->
+    <div class="px-5 pb-3 text-xs text-slate-300 font-mono">{{ r.uid }}</div>
+  </div>
+{% endfor %}
+
+{% if not cards %}
+  <div class="text-center py-12 text-slate-400 text-sm">Правила не найдены</div>
+{% endif %}

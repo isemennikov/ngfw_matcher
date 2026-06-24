@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>ngfw-matcher — Подключение</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-900 flex items-center justify-center min-h-screen">
+  <div class="bg-slate-800 rounded-xl shadow-2xl p-8 w-full max-w-sm">
+
+    <div class="flex items-center gap-3 mb-2">
+      <div class="w-9 h-9 bg-blue-500 rounded-lg flex items-center justify-center text-white font-bold text-lg">N</div>
+      <div>
+        <div class="text-white font-semibold text-base">ngfw-matcher</div>
+        <div class="text-slate-400 text-xs">Policy Analyzer · v{{ app_version }}</div>
+      </div>
+    </div>
+    <p class="text-slate-500 text-xs mb-7">Анализ политик PT NGFW</p>
+
+    {% if error is defined and error %}
+      <div class="bg-red-900/40 border border-red-700 text-red-300 text-sm rounded-lg px-4 py-3 mb-5">
+        {{ error }}
+      </div>
+    {% endif %}
+
+    <div id="ro-warn"
+         class="hidden bg-amber-900/40 border border-amber-700 text-amber-300 text-sm rounded-lg px-4 py-3 mb-5">
+      Используйте RO учётную запись
+    </div>
+
+    <form method="post" action="/connect" class="space-y-4" id="login-form">
+      <div>
+        <label class="block text-xs font-medium text-slate-400 mb-1.5">Host</label>
+        <input type="text" name="host" required
+               value="{{ host | default('https://') }}"
+               placeholder="https://10.1.31.100"
+               class="w-full bg-slate-700 border border-slate-600 text-slate-100 text-sm rounded-lg
+                      px-3 py-2.5 focus:outline-none focus:border-blue-500 placeholder-slate-500">
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-slate-400 mb-1.5">Логин</label>
+        <input type="text" name="user" id="user-input" required
+               value="{{ user | default('') }}"
+               placeholder="admin_ro"
+               autocomplete="username"
+               class="w-full bg-slate-700 border border-slate-600 text-slate-100 text-sm rounded-lg
+                      px-3 py-2.5 focus:outline-none focus:border-blue-500 placeholder-slate-500">
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-slate-400 mb-1.5">Пароль</label>
+        <input type="password" name="password" required
+               placeholder="••••••••"
+               autocomplete="current-password"
+               class="w-full bg-slate-700 border border-slate-600 text-slate-100 text-sm rounded-lg
+                      px-3 py-2.5 focus:outline-none focus:border-blue-500 placeholder-slate-500">
+      </div>
+      <button type="submit" id="submit-btn"
+              class="w-full bg-blue-600 hover:bg-blue-500 text-white font-medium text-sm
+                     rounded-lg py-2.5 transition-colors mt-2">
+        Подключиться
+      </button>
+    </form>
+
+    <script>
+      const userInput = document.getElementById('user-input');
+      const roWarn   = document.getElementById('ro-warn');
+      const submitBtn = document.getElementById('submit-btn');
+
+      function checkRo() {
+        const val = userInput.value.trim().toLowerCase();
+        const ok  = val === '' || val.endsWith('ro');
+        roWarn.classList.toggle('hidden', ok);
+        submitBtn.disabled = !ok;
+        submitBtn.classList.toggle('opacity-50', !ok);
+        submitBtn.classList.toggle('cursor-not-allowed', !ok);
+      }
+
+      userInput.addEventListener('input', checkRo);
+      checkRo();
+    </script>
+  </div>
+</body>
+</html>
