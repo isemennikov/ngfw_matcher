@@ -1,6 +1,17 @@
 <!-- markdownlint-disable MD024 -->
 # CHANGELOG
 
+
+# [2.0.2] — 2026-06-24
+
+### Исправлено
+
+- **`match --fullview`**: ошибка `name 'kind' is not defined` при экспорте в JSON.
+  В функции `_serialize_src_field` использовалась необъявленная переменная `kind`
+  вместо `field.get("kind", "RULE_KIND_LIST")`.
+
+---
+
 ## [2.0.1] — 2026-06-24
 
 ### Исправлено
