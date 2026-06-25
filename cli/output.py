@@ -592,7 +592,7 @@ def _serialize_src_field(field: dict | None, src_str: str, fetch_group=None) -> 
         _serialize_net_obj_filtered(obj, src, fetch_group)
         for obj in (field.get("objects") or [])
     ]
-    return {"kind": kind, "objects": [o for o in objects if o is not None]}
+    return {"kind": field.get("kind", "RULE_KIND_LIST"), "objects": [o for o in objects if o is not None]}
 
 
 def _serialize_svc_obj(item: dict, fetch_group=None, _depth: int = 0) -> dict:

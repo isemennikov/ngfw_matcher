@@ -1,4 +1,4 @@
-"""Data loading helpers: normalize rules, build matchers, manage sources."""
+"""Хендлеры по загрузке данных: нормализуют правила, создают средства сопоставления, управляют источниками."""
 from __future__ import annotations
 
 import csv
