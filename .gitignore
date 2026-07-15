@@ -20,6 +20,11 @@ Thumbs.db
 # Ignore all JSON and CSV files
 *.json
 *.csv
+!package.json
+!package-lock.json
+
+# Node (Tailwind static build)
+node_modules/
 
 # Web app runtime data
 data/*.db
@@ -40,3 +45,22 @@ htmlcov/
 
 openapi.*
 
+# Claude Code directories
+.claude/
+.claude/settings.json
+.claude/settings.local.json
+
+# Conversation and session data
+.claude/conversations/
+.claude/sessions/
+.claude/checkpoints/
+
+# Skills cache and logs
+.claude/skills/.cache/
+.claude/skills/*.log
+.claude/skills/state/
+.claude/skills/tmp/
+
+# История Claude
+.claude-history
+BACKLOG.md

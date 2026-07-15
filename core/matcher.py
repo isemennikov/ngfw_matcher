@@ -196,6 +196,56 @@ class RuleMatcher:
 
         return matched
 
+    def fullview_scan_dst(self, flow: TrafficFlow) -> list[NormalizedRule]:
+        """
+        Возвращает ВСЕ включённые правила, где dst совпадает с flow.dst_ip.
+        src/port/proto — дополнительные фильтры (пропускаются если any/0).
+        Зональные правила пропускаются (как в fullview_scan).
+        """
+        try:
+            dst = _parse_flow_addr(flow.dst_ip)
+        except ValueError as e:
+            log.error("Некорректный адрес: %s", e)
+            return []
+
+        is_src_any   = (flow.src_ip in ("0.0.0.0/0", "::/0"))
+        is_port_any  = (flow.dst_port == 0)
+        is_proto_any = (flow.protocol == "any")
+
+        try:
+            src = None if is_src_any else _parse_flow_addr(flow.src_ip)
+        except ValueError:
+            src = None
+            is_src_any = True
+
+        matched: list[NormalizedRule] = []
+        for rule in self.rules:
+            if not rule.enabled:
+                continue
+
+            src_zones = self.resolver.resolve_field_zone(rule.source_zone)
+            dst_zones = self.resolver.resolve_field_zone(rule.destination_zone)
+            if src_zones or dst_zones:
+                continue
+
+            dst_nets = self.resolver.resolve_field_network(rule.destination_addr)
+            if not _addr_in_nets(dst, dst_nets, self.strict):
+                continue
+
+            if not is_src_any and src is not None:
+                src_nets = self.resolver.resolve_field_network(rule.source_addr)
+                if not _addr_in_nets(src, src_nets, self.strict):
+                    continue
+
+            if (not is_port_any or not is_proto_any) and not self._is_app_only(rule):
+                services = self.resolver.resolve_field_service(rule.service)
+                if not self._service_matches(flow, services):
+                    continue
+
+            matched.append(rule)
+
+        return matched
+
     def match(self, flow: TrafficFlow) -> MatchResult:
         result = MatchResult(flow=flow)
 
@@ -302,12 +352,15 @@ class RuleMatcher:
 
         return False
 
-    def check_shadowed(self) -> list[dict]:
+    def check_shadowed(self, progress_cb=None) -> list[dict]:
         """
         Для каждой пары (rule_a перед rule_b) проверяет, полностью ли rule_a
         перекрывает rule_b по src/dst/svc.
         Пропускаются: зональные правила, отключённые правила.
         Возвращает список {"shadowed": NormalizedRule, "by": NormalizedRule, "conflict": bool}
+
+        progress_cb(current, total), если передан, вызывается периодически по
+        внешнему циклу — для отображения прогресса на O(n²) расчёте.
         """
         # Только правила без явных зон — анализ исключительно по IP/порту
         all_enabled = [r for r in self.rules if r.enabled]
@@ -338,6 +391,7 @@ class RuleMatcher:
 
         results: list[dict] = []
         n = len(active)
+        step = max(1, n // 100)
         for i in range(n):
             a = active[i]
             for j in range(i + 1, n):
@@ -350,14 +404,21 @@ class RuleMatcher:
                     continue
                 conflict = (a.action != b.action)
                 results.append({"shadowed": b, "by": a, "conflict": conflict})
+            if progress_cb and i % step == 0:
+                progress_cb(i, n)
 
+        if progress_cb:
+            progress_cb(n, n)
         return results
 
-    def check_partial_shadowed(self) -> list[dict]:
+    def check_partial_shadowed(self, progress_cb=None) -> list[dict]:
         """
         Для каждой пары (rule_a перед rule_b) проверяет частичное пересечение:
         src ∩ ≠ ∅  AND  dst ∩ ≠ ∅  AND  svc ∩ ≠ ∅
         Пропускаются зональные, отключённые, FQDN и app-only правила.
+
+        progress_cb(current, total), если передан, вызывается периодически по
+        внешнему циклу — для отображения прогресса на O(n²) расчёте.
         """
         all_enabled = [r for r in self.rules if r.enabled]
         no_zone = [
@@ -379,6 +440,7 @@ class RuleMatcher:
 
         results: list[dict] = []
         n = len(active)
+        step = max(1, n // 100)
         for i in range(n):
             a = active[i]
             for j in range(i + 1, n):
@@ -401,7 +463,11 @@ class RuleMatcher:
                     "overlap_dst": _nets_intersection(dst_a, dst_b),
                     "overlap_svc": _svc_intersection(svc_a, svc_b),
                 })
+            if progress_cb and i % step == 0:
+                progress_cb(i, n)
 
+        if progress_cb:
+            progress_cb(n, n)
         return results
 
 

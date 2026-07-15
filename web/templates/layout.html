@@ -4,14 +4,36 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}ngfw-matcher{% endblock %}</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
-  <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+  <meta name="theme-color" content="#0f172a">
+  <meta name="description" content="ngfw-matcher — локальный анализ политик PT NGFW: Match, Shadows, NAT audit, Rule Hits">
+  <link rel="stylesheet" href="/static/css/tailwind.css">
+  <script src="/static/js/htmx.min.js"></script>
+  <script src="/static/js/alpinejs.min.js" defer></script>
   <style>
     [x-cloak] { display: none !important; }
     .htmx-indicator { display: none; }
     .htmx-request .htmx-indicator { display: inline-flex; }
     .htmx-request.htmx-indicator  { display: inline-flex; }
+
+    :focus-visible {
+      outline: 2px solid #38bdf8;
+      outline-offset: 2px;
+    }
+
+    .skip-link {
+      position: absolute;
+      left: -9999px;
+      top: 0;
+      z-index: 100;
+      padding: 8px 16px;
+      background: #0f172a;
+      color: #fff;
+      border-radius: 0 0 6px 0;
+    }
+    .skip-link:focus {
+      left: 0;
+    }
 
     /* Thread-нити для связи правил */
     .thread-root::before {
@@ -65,8 +87,18 @@
     scrollbar-width: thin;
     scrollbar-color: #334155 #0f172a;
   </style>
+  <script>
+    document.addEventListener('htmx:beforeRequest', function() {
+      document.getElementById('global-loading-bar').style.opacity = '1';
+    });
+    document.addEventListener('htmx:afterRequest', function() {
+      document.getElementById('global-loading-bar').style.opacity = '0';
+    });
+  </script>
 </head>
 <body class="bg-slate-50 text-slate-800 flex h-screen overflow-hidden">
+
+  <a href="#main-content" class="skip-link">Перейти к содержимому</a>
 
   <!-- ── Сайдбар ──────────────────────────────────────────────────────── -->
   <aside class="w-56 bg-slate-900 text-slate-300 flex flex-col flex-shrink-0 overflow-y-auto">
@@ -101,120 +133,29 @@
     <!-- Устройства -->
     {% if request.session.get('host') %}
     <div class="py-3 border-b border-slate-700">
-      <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 px-4">Устройства</div>
-      {% for dev in (devices | default([])) %}
-        {% set depth = dev.depth | default(0) %}
-        {% set is_selected = dev.id == request.session.get('selected_device') %}
-        <div class="flex items-center gap-0.5 mb-0.5"
-             style="padding-left: {{ 8 + depth * 12 }}px; padding-right: 4px;">
-
-          {# Коннектор дерева #}
-          {% if depth > 0 %}
-            <span class="text-slate-600 flex-shrink-0 select-none mr-0.5"
-                  style="font-size:10px; line-height:1">{{ '└' if dev.is_last else '├' }}</span>
-          {% endif %}
-
-          <form method="post" action="/devices/select/{{ dev.id }}" class="flex-1 min-w-0">
-            <button type="submit"
-              class="w-full text-left rounded transition-colors truncate
-                {% if depth == 0 %}text-xs font-semibold py-1.5 px-2
-                {% else %}text-xs py-1 px-2{% endif %}
-                {% if is_selected %}
-                  bg-blue-600 text-white
-                {% else %}
-                  {% if depth == 0 %}text-slate-300 hover:bg-slate-800 hover:text-white
-                  {% else %}text-slate-400 hover:bg-slate-800 hover:text-slate-200{% endif %}
-                {% endif %}">
-              {{ dev.name }}
-              {% if dev.last_sync %}
-                <span class="{% if is_selected %}text-blue-300{% else %}text-slate-600{% endif %} ml-1 font-normal">·{{ dev.rules_count }}</span>
-              {% endif %}
-            </button>
-          </form>
-
-          {% if is_selected %}
-          {# Загрузить снапшот из файла #}
-          <form hx-post="/devices/{{ dev.id }}/snapshot-upload"
-                hx-target="#sync-status"
-                hx-swap="innerHTML"
-                hx-encoding="multipart/form-data"
-                class="flex-shrink-0">
-            <input type="file" name="file" accept=".json" class="hidden"
-                   id="snap-file-{{ dev.id }}"
-                   onchange="this.form.requestSubmit()">
-            <button type="button"
-                    onclick="document.getElementById('snap-file-{{ dev.id }}').click()"
-                    title="Загрузить снапшот из файла"
-                    class="text-slate-500 hover:text-indigo-400 transition-colors p-1">
-              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                  d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
-              </svg>
-            </button>
-          </form>
-          {# Sync из СУ #}
-          <button
-            hx-post="/devices/sync/{{ dev.id }}"
-            hx-target="#sync-status"
-            hx-swap="innerHTML"
-            title="Sync из СУ"
-            class="text-slate-500 hover:text-blue-400 transition-colors p-1 flex-shrink-0">
-            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-            </svg>
-          </button>
-          {# Скачать снапшот #}
-          {% if dev.last_sync %}
-          <a href="/devices/{{ dev.id }}/snapshot-download"
-             title="Скачать снапшот"
-             class="text-slate-500 hover:text-green-400 transition-colors p-1 flex-shrink-0">
-            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
-            </svg>
-          </a>
-          {% endif %}
-          {% endif %}
-        </div>
-      {% endfor %}
+      <div class="flex items-center justify-between mb-2 px-4">
+        <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Устройства</span>
+        <button type="button"
+          hx-post="/devices/sync"
+          hx-target="#sync-status"
+          hx-swap="innerHTML"
+          title="Синхронизировать дерево с СУ"
+          aria-label="Синхронизировать дерево с СУ"
+          class="text-slate-500 hover:text-blue-400 transition-colors p-1 flex-shrink-0">
+          <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+          </svg>
+        </button>
+      </div>
+      <div id="device-tree-rows">
+        {% include "partials/device_tree_rows.html" %}
+      </div>
       <div id="sync-status" class="mt-2 text-xs px-4"></div>
 
-      {# Инфо: режим вычислений #}
-      {% if selected_dev %}
-        <div class="mt-3 mx-3 rounded-lg bg-slate-800/60 border border-slate-700/50 px-3 py-2">
-          {% if selected_dev.last_sync %}
-            <div class="flex items-center gap-1.5 text-slate-500 text-xs">
-              <svg class="w-3 h-3 flex-shrink-0 text-green-600" fill="currentColor" viewBox="0 0 20 20">
-                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
-              </svg>
-              <span>Вычисления локальны</span>
-            </div>
-            <div class="text-slate-600 text-xs mt-1 leading-relaxed">
-              Match · Find · Shadows<br>
-              работают офлайн из снапшота
-            </div>
-            <div class="mt-1.5 text-slate-600 text-xs border-t border-slate-700/50 pt-1.5 flex justify-between">
-              <span>Правил в базе</span>
-              <span class="text-slate-500 font-mono">{{ selected_dev.rules_count }}</span>
-            </div>
-            <div class="text-slate-600 text-xs flex justify-between">
-              <span>Снапшот</span>
-              <span class="text-slate-500">{{ selected_dev.last_sync[:10] }}</span>
-            </div>
-          {% else %}
-            <div class="flex items-center gap-1.5 text-amber-700 text-xs">
-              <svg class="w-3 h-3 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
-              </svg>
-              <span>Sync не выполнен</span>
-            </div>
-            <div class="text-slate-600 text-xs mt-1">
-              Нажмите ↻ для загрузки правил
-            </div>
-          {% endif %}
-        </div>
-      {% endif %}
+      <div id="device-status-box">
+        {% include "partials/device_status_box.html" %}
+      </div>
     </div>
     {% endif %}
 
@@ -247,6 +188,53 @@
       {% endif %}
     </div>
 
+    {# Группа внутри загруженного оффлайн multi-снапшота #}
+    {% if snap_groups %}
+      <div class="px-3 py-3 border-b border-slate-700">
+        <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5 px-1">Группа устройств</div>
+        <div class="space-y-0.5 max-h-48 overflow-y-auto pr-1">
+          {% for g in snap_groups %}
+            <form method="post" action="/devices/group/{{ g.id }}">
+              <button type="submit"
+                class="w-full text-left rounded-lg px-2 py-1.5 text-xs transition-colors
+                       {% if g.id == active_group_id %}
+                         bg-blue-600/30 text-blue-200 border border-blue-600/40
+                       {% else %}
+                         text-slate-400 hover:bg-slate-700/50 hover:text-slate-200
+                       {% endif %}">
+                <span style="padding-left: {{ g.depth * 10 }}px">
+                  {% if g.depth > 0 %}└ {% endif %}{{ g.name }}
+                </span>
+                {% if g.rules_count %}
+                  <span class="float-right text-slate-600 font-mono">{{ g.rules_count }}</span>
+                {% endif %}
+              </button>
+            </form>
+          {% endfor %}
+        </div>
+      </div>
+    {% endif %}
+
+    {% if request.session.get('host') or offline_snap_active %}
+      <div class="px-3 py-3 border-b border-slate-700">
+        <form method="post" action="/devices/include-parents">
+          <label class="flex items-start gap-2 text-xs text-slate-400 cursor-pointer px-1">
+            <input type="checkbox" name="enabled" value="1"
+                   {% if include_parent_groups %}checked{% endif %}
+                   onchange="this.form.requestSubmit()"
+                   class="mt-0.5 rounded border-slate-600 bg-slate-800 text-blue-600
+                          focus:ring-0 focus:ring-offset-0 flex-shrink-0">
+            <span>
+              Учитывать родительские группы
+              <span class="block text-slate-600 mt-0.5">
+                Pre/Post-правила предков (Global и т.д.) участвуют в Match / Shadows / NAT
+              </span>
+            </span>
+          </label>
+        </form>
+      </div>
+    {% endif %}
+
     <!-- Навигация -->
     <nav class="flex-1 px-3 py-3">
       <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 px-1">Анализ</div>
@@ -255,6 +243,8 @@
         ('/find-rule', 'Find Rule',  'M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z'),
         ('/shadows',   'Shadows',    'M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z'),
         ('/hits',      'Rule Hits',  'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z'),
+        ('/fullview',  'Fullview',   'M4 6h16M4 10h16M4 14h16M4 18h16'),
+        ('/nat',       'NAT Audit',  'M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4'),
       ] %}
       {% for href, label, icon_d in nav %}
         <a href="{{ href }}"
@@ -280,6 +270,10 @@
 
   <!-- ── Основная область ──────────────────────────────────────────────── -->
   <main class="flex-1 flex flex-col overflow-hidden">
+    <!-- Глобальный индикатор загрузки (HTMX) -->
+    <div id="global-loading-bar"
+         style="opacity:0; transition: opacity 0.15s"
+         class="fixed top-0 left-0 right-0 z-50 h-0.5 bg-blue-500 pointer-events-none"></div>
     <!-- Топбар -->
     <header class="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between flex-shrink-0">
       <h1 class="text-sm font-semibold text-slate-700">{% block header %}{% endblock %}</h1>
@@ -305,10 +299,27 @@
     </header>
 
     <!-- Контент -->
-    <div class="flex-1 overflow-y-auto p-6">
-      {% block content %}{% endblock %}
+    <div id="main-content" tabindex="-1" class="flex-1 overflow-y-auto p-6">
+      <div class="{% block content_width %}max-w-6xl{% endblock %} mx-auto">
+        {% block content %}{% endblock %}
+      </div>
     </div>
   </main>
 
+<script>
+  function submitExport(btn, action) {
+    const form = btn.closest('form');
+    const f = document.createElement('form');
+    f.method = 'POST'; f.action = action;
+    Array.from(form.elements).forEach(el => {
+      if (!el.name) return;
+      const inp = document.createElement('input');
+      inp.type = 'hidden'; inp.name = el.name;
+      inp.value = el.type === 'checkbox' ? (el.checked ? '1' : '') : el.value;
+      f.appendChild(inp);
+    });
+    document.body.appendChild(f); f.submit(); document.body.removeChild(f);
+  }
+</script>
 </body>
 </html>

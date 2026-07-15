@@ -1,0 +1,194 @@
+{% macro dot(rule) %}
+  {% if not rule.enabled %}
+    <span class="thread-dot dot-disabled" title="Отключено" aria-hidden="true"></span>
+  {% elif rule.action == 'allow' %}
+    <span class="thread-dot dot-allow" aria-hidden="true"></span>
+  {% else %}
+    <span class="thread-dot dot-deny" aria-hidden="true"></span>
+  {% endif %}
+{% endmacro %}
+
+{% macro action_badge(action) %}
+  {% if action == 'allow' %}
+    <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-50 text-green-700 border border-green-200">ALLOW</span>
+  {% else %}
+    <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-50 text-red-700 border border-red-200">{{ action | upper }}</span>
+  {% endif %}
+{% endmacro %}
+
+{% macro addr_list(items, limit=5) %}
+  {% if items == ['ANY'] %}
+    <span class="text-slate-400 italic">ANY</span>
+  {% else %}
+    {% for item in items[:limit] %}
+      <span class="font-mono text-xs">{{ item }}</span>{% if not loop.last %}<span class="text-slate-300 mx-1">,</span>{% endif %}
+    {% endfor %}
+    {% if items | length > limit %}
+      <span class="text-slate-400 text-xs"> +{{ items | length - limit }}</span>
+    {% endif %}
+  {% endif %}
+{% endmacro %}
+
+{% for fr in flow_results %}
+{% set flow = fr.flow %}
+{% set result = fr.result %}
+{% set matched = fr.matched %}
+{% set shadowed = fr.shadowed %}
+{% set skipped_app = fr.skipped_app %}
+{% set skipped_fqdn = fr.skipped_fqdn %}
+
+{% if flow_results | length > 1 %}
+  <div class="text-xs text-slate-400 {% if not loop.first %}mt-6{% endif %} mb-2 font-mono">
+    {{ loop.index }}/{{ flow_results | length }}
+  </div>
+{% endif %}
+
+<!-- Трафик -->
+<div class="text-xs text-slate-500 mb-4 font-mono bg-slate-50 rounded-lg px-4 py-2 border border-slate-200">
+  {{ flow.src_ip }} → {{ flow.dst_ip }}
+  {% if flow.dst_port %} : {{ flow.dst_port }}{% endif %}
+  /{{ flow.protocol }}
+</div>
+
+{% if not result.hit %}
+  <!-- Нет совпадения -->
+  <div class="bg-red-50 border border-red-200 rounded-xl p-5 flex items-center gap-3">
+    <span class="text-red-500 text-xl">✗</span>
+    <div>
+      <div class="font-semibold text-red-700 text-sm">Нет совпадения</div>
+      <div class="text-red-600 text-xs mt-0.5">default-deny</div>
+    </div>
+  </div>
+
+{% else %}
+
+  <!-- Thread-нить -->
+  <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+
+    <!-- Корень: сработавшее правило -->
+    {% set r = matched.rule %}
+    <div class="px-5 py-4 flex items-start gap-3
+      {% if r.action == 'allow' %}bg-green-50 border-b border-green-100
+      {% else %}bg-red-50 border-b border-red-100{% endif %}">
+      {{ dot(r) }}
+      <div class="flex-1 min-w-0">
+        <div class="flex items-center gap-3 flex-wrap">
+          <span class="font-semibold text-sm text-slate-800">{{ r.name }}</span>
+          {{ action_badge(r.action) }}
+          {% if not r.enabled %}
+            <span class="text-xs text-slate-400">[выключено]</span>
+          {% endif %}
+          <span class="text-xs text-slate-400">{{ r.precedence | upper }} #{{ r.position_in_precedence or r.index + 1 }}</span>
+          <span class="text-xs text-slate-300" title="Порядковый номер в общем эффективном списке PRE+POST (с учётом родительских групп, если включено)">#{{ r.index + 1 }} глобальная</span>
+          {% if r.source_group_name %}
+            <span class="text-xs px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 border border-slate-200">{{ r.source_group_name }}</span>
+          {% endif %}
+        </div>
+        {% if matched.note %}
+          <div class="text-xs text-amber-600 mt-1">{{ matched.note }}</div>
+        {% endif %}
+        <div class="mt-2 grid grid-cols-3 gap-3 text-xs text-slate-500">
+          <div><span class="text-slate-400">src</span> {{ addr_list(matched.src) }}</div>
+          <div><span class="text-slate-400">dst</span> {{ addr_list(matched.dst) }}</div>
+          <div><span class="text-slate-400">svc</span> {{ addr_list(matched.svc) }}</div>
+        </div>
+        <div class="text-xs text-slate-300 font-mono mt-1.5">{{ r.uid }}</div>
+      </div>
+    </div>
+
+    <!-- Ветки: теневые правила (git-граф стиль) -->
+    {% for sh in shadowed %}
+      {% set s = sh.rule %}
+      {% set is_last = loop.last %}
+      <div class="flex items-stretch border-b border-slate-100 {% if is_last %}border-b-0{% endif %} hover:bg-slate-50 transition-colors">
+
+        <!-- Колонка коннектора 40px -->
+        <div style="width:40px; flex-shrink:0; position:relative;">
+          {% if is_last %}
+            <div style="position:absolute; left:23px; top:0; height:17px; width:2px; background:#e2e8f0; border-radius:1px;"></div>
+          {% else %}
+            <div style="position:absolute; left:23px; top:0; bottom:0; width:2px; background:#e2e8f0; border-radius:1px;"></div>
+          {% endif %}
+          <div style="position:absolute; left:23px; top:16px; right:0; height:2px; background:#e2e8f0; border-radius:1px;"></div>
+        </div>
+
+        <!-- Содержимое ветки -->
+        <div class="flex-1 py-3 pr-4 flex items-start gap-3 min-w-0">
+          {{ dot(s) }}
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-3 flex-wrap">
+              <span class="font-medium text-sm text-slate-700">{{ s.name }}</span>
+              {{ action_badge(s.action) }}
+              {% if not s.enabled %}<span class="text-xs text-slate-400">[выкл]</span>{% endif %}
+              <span class="text-xs text-slate-400">{{ s.precedence | upper }} #{{ s.position_in_precedence or s.index + 1 }}</span>
+              <span class="text-xs text-slate-300" title="Порядковый номер в общем эффективном списке PRE+POST (с учётом родительских групп, если включено)">глоб. #{{ s.index + 1 }}</span>
+              {% if s.source_group_name %}
+                <span class="text-xs px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 border border-slate-200">{{ s.source_group_name }}</span>
+              {% endif %}
+            </div>
+            {% if sh.note %}
+              <div class="text-xs text-amber-600 mt-1">{{ sh.note }}</div>
+            {% endif %}
+            <div class="mt-1.5 grid grid-cols-3 gap-3 text-xs text-slate-500">
+              <div><span class="text-slate-400">src</span> {{ addr_list(sh.src) }}</div>
+              <div><span class="text-slate-400">dst</span> {{ addr_list(sh.dst) }}</div>
+              <div><span class="text-slate-400">svc</span> {{ addr_list(sh.svc) }}</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    {% endfor %}
+
+    {% if shadowed %}
+      <div class="px-5 py-2 bg-amber-50 border-t border-amber-100">
+        <span class="text-xs text-amber-600">⚠ {{ shadowed | length }} теневых правил — кандидаты на удаление</span>
+      </div>
+    {% endif %}
+  </div>
+
+{% endif %}
+
+<!-- L7 и FQDN правила -->
+{% if skipped_app %}
+<div class="mt-4 bg-slate-50 rounded-xl border border-slate-200 p-4">
+  <div class="text-xs font-semibold text-slate-500 mb-2">? L7-правила (не проверялись по IP/порту) — {{ skipped_app | length }}</div>
+  {% for r in skipped_app %}
+    <div class="text-xs text-slate-500 py-1 border-b border-slate-100 last:border-0 flex items-center gap-2">
+      {{ action_badge(r.action) }}
+      <span>{{ r.name }}</span>
+      <span class="text-slate-300">{{ r.precedence }} #{{ r.position_in_precedence or r.index+1 }}</span>
+    </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if skipped_fqdn %}
+<div class="mt-4 bg-slate-50 rounded-xl border border-slate-200 p-4">
+  <div class="text-xs font-semibold text-slate-500 mb-2">? FQDN-правила (не проверялись по IP) — {{ skipped_fqdn | length }}</div>
+  {% for r in skipped_fqdn %}
+    <div class="text-xs text-slate-500 py-1 border-b border-slate-100 last:border-0 flex items-center gap-2">
+      {{ action_badge(r.action) }}
+      <span>{{ r.name }}</span>
+    </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% endfor %}
+
+{% if overlap_mode %}
+<div class="mt-3 text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5 inline-flex items-center gap-1.5">
+  ⚠ Режим перекрытий — показаны правила с любым пересечением адресов
+</div>
+{% endif %}
+
+<!-- Статистика расчёта -->
+<div class="mt-4 flex items-center gap-2 text-xs text-slate-400">
+  <svg class="w-3.5 h-3.5 text-slate-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+  </svg>
+  <span>Проверено <span class="font-mono text-slate-500">{{ n_rules }}</span> правил
+  {% if flow_results | length > 1 %} · <span class="font-mono text-slate-500">{{ flow_results | length }}</span> комбинаций{% endif %}
+  · локальный расчёт из снапшота</span>
+</div>

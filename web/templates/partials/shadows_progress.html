@@ -1,0 +1,19 @@
+{% set pct = ((current / total * 100) | int) if total else 0 %}
+<div id="shadows-progress-poll"
+     hx-get="/shadows/status/{{ job_id }}"
+     hx-trigger="every 500ms"
+     hx-target="#shadows-result"
+     hx-swap="innerHTML"
+     class="bg-white rounded-xl border border-slate-200 p-6">
+  <div class="flex items-center gap-3 mb-3">
+    <svg class="animate-spin w-4 h-4 text-blue-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" aria-hidden="true">
+      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+    </svg>
+    <span class="text-sm text-slate-600">Анализируем правила…</span>
+    <span class="text-xs text-slate-400 ml-auto font-mono">{{ current }} / {{ total }} · {{ pct }}%</span>
+  </div>
+  <div class="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+    <div class="h-full bg-blue-500 rounded-full transition-all duration-300" style="width: {{ pct }}%"></div>
+  </div>
+</div>

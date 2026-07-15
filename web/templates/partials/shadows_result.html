@@ -1,12 +1,12 @@
 {% macro dot(rule, conflict=false) %}
   {% if conflict %}
-    <span class="thread-dot dot-conflict" title="Конфликт действий"></span>
+    <span class="thread-dot dot-conflict" title="Конфликт действий" aria-hidden="true"></span>
   {% elif not rule.enabled %}
-    <span class="thread-dot dot-disabled"></span>
+    <span class="thread-dot dot-disabled" aria-hidden="true"></span>
   {% elif rule.action == 'allow' %}
-    <span class="thread-dot dot-allow"></span>
+    <span class="thread-dot dot-allow" aria-hidden="true"></span>
   {% else %}
-    <span class="thread-dot dot-deny"></span>
+    <span class="thread-dot dot-deny" aria-hidden="true"></span>
   {% endif %}
 {% endmacro %}
 
@@ -58,6 +58,9 @@
         <span class="font-semibold text-sm text-slate-800">{{ by.name }}</span>
         {{ action_badge(by.action) }}
         <span class="text-xs text-slate-400">{{ by.precedence | upper }} #{{ by.position_in_precedence or by.index + 1 }}</span>
+        {% if by.source_group_name %}
+          <span class="text-xs px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 border border-slate-200">{{ by.source_group_name }}</span>
+        {% endif %}
         {% if has_conflict %}
           <span class="text-xs font-medium text-red-600 bg-red-100 px-2 py-0.5 rounded">⚠ КОНФЛИКТ</span>
         {% endif %}
@@ -93,10 +96,29 @@
               </span>
               {{ action_badge(sh.action) }}
               <span class="text-xs text-slate-400">{{ sh.precedence | upper }} #{{ sh.position_in_precedence or sh.index + 1 }}</span>
+              {% if sh.source_group_name and sh.source_group_name != by.source_group_name %}
+                <span class="text-xs px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-500 border border-indigo-200" title="Правило унаследовано из другой группы">{{ sh.source_group_name }}</span>
+              {% endif %}
               {% if entry.conflict %}
                 <span class="text-xs font-medium text-red-600 bg-red-50 border border-red-200 rounded px-1.5 py-0.5">⚠ конфликт</span>
               {% endif %}
+              {# Кнопка сравнения пары правил #}
+              <form hx-post="/compare"
+                    hx-target="#cmp-{{ by.uid[:8] }}-{{ sh.uid[:8] }}"
+                    hx-swap="innerHTML"
+                    class="inline">
+                <input type="hidden" name="uid_a" value="{{ by.uid }}">
+                <input type="hidden" name="uid_b" value="{{ sh.uid }}">
+                <button type="submit"
+                        class="text-xs text-slate-400 hover:text-blue-500 border border-slate-200
+                               hover:border-blue-300 rounded px-1.5 py-0.5 transition-colors">
+                  ⇄ сравнить
+                </button>
+              </form>
             </div>
+
+            <!-- Результат сравнения (загружается по клику) -->
+            <div id="cmp-{{ by.uid[:8] }}-{{ sh.uid[:8] }}"></div>
 
             <!-- Пересечения для partial mode -->
             {% if mode == 'partial' and entry.overlap_src is defined %}
@@ -142,22 +164,18 @@
   </div>
   <div class="flex items-center gap-2">
     {% if page > 0 %}
-    <form hx-post="/shadows" hx-target="#shadows-result" hx-swap="innerHTML">
-      <input type="hidden" name="mode" value="{{ mode }}">
-      <input type="hidden" name="page" value="{{ page - 1 }}">
-      <button type="submit" class="px-3 py-1.5 text-xs rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors">
-        ← Назад
-      </button>
-    </form>
+    <button hx-get="/shadows/status/{{ job_id }}" hx-vals='{"page": {{ page - 1 }}}'
+            hx-target="#shadows-result" hx-swap="innerHTML"
+            class="px-3 py-1.5 text-xs rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors">
+      ← Назад
+    </button>
     {% endif %}
     {% if page < total_pages - 1 %}
-    <form hx-post="/shadows" hx-target="#shadows-result" hx-swap="innerHTML">
-      <input type="hidden" name="mode" value="{{ mode }}">
-      <input type="hidden" name="page" value="{{ page + 1 }}">
-      <button type="submit" class="px-3 py-1.5 text-xs rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors">
-        Вперёд →
-      </button>
-    </form>
+    <button hx-get="/shadows/status/{{ job_id }}" hx-vals='{"page": {{ page + 1 }}}'
+            hx-target="#shadows-result" hx-swap="innerHTML"
+            class="px-3 py-1.5 text-xs rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors">
+      Вперёд →
+    </button>
     {% endif %}
   </div>
 </div>

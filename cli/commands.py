@@ -1,5 +1,4 @@
-# Developed by Ilya Semennikov
-"""Хендрелы."""
+"""CLI command handlers and match flow execution."""
 from __future__ import annotations
 
 import json
@@ -11,12 +10,16 @@ from .output import (
     print_result, print_summary, export_csv, export_fullview_json,
     print_rule_card, print_shadowed_analysis, print_partial_shadowed_analysis,
     export_shadowed_json, print_hits_table, print_version_footer, _json_meta,
+    print_nat_rules,
 )
 from .builder import (
     build_matcher, build_matcher_from_snapshot,
     build_source, maybe_save, select_device, load_csv,
+    load_nat_rules, load_nat_rules_from_snapshot,
 )
 from ..core.models import TrafficFlow
+from ..core.nat_audit import associate_nat_rules
+from ..core.export import build_nat_audit_dict
 from ..core.matcher import RuleMatcher
 from ..core.utils import parse_ports
 from ..sources.ngfw_api import NGFWDirectSource
@@ -439,3 +442,120 @@ def cmd_rule_hits(args):
     if getattr(args, "sort_hits", False):
         rows.sort(key=lambda r: r["hits"], reverse=True)
     print_hits_table(rows)
+
+
+def cmd_fullview(args):
+    """Найти все правила где указанный адрес фигурирует в source или destination."""
+    strict = not getattr(args, "overlap", False)
+
+    if getattr(args, "snapshot", None):
+        matcher = build_matcher_from_snapshot(args.snapshot, strict=strict)
+    else:
+        source = build_source(args)
+        if getattr(args, "device", None):
+            device_group_id = args.device
+        else:
+            device_group_id, _ = select_device(source)
+        ok(f"Device Group ID:   {device_group_id}")
+        matcher = build_matcher(source, device_group_id, strict=strict)
+
+    fetch_net = matcher.resolver._fetch_net_group
+    fetch_svc = matcher.resolver._fetch_svc_group
+
+    src_raw   = (getattr(args, "src",   None) or "").strip()
+    dst_raw   = (getattr(args, "dst",   None) or "").strip()
+    dport_raw = (getattr(args, "dport", None) or "any").strip()
+    proto_raw = (getattr(args, "proto", None) or "any").strip()
+
+    if not src_raw and not dst_raw:
+        die("Укажите --src и/или --dst")
+
+    ports = parse_ports(dport_raw)
+    dst_port = ports[0] if ports else 0
+    proto    = proto_raw if proto_raw.lower() != "any" else "any"
+
+    def _make_addr(raw: str) -> str:
+        if not raw or raw.lower() == "any":
+            return "0.0.0.0/0"
+        return raw
+
+    flow_results = []
+    total = 0
+
+    if src_raw:
+        for addr in [a.strip() for a in src_raw.replace("\n", ",").split(",") if a.strip()]:
+            flow = TrafficFlow(src_ip=_make_addr(addr), dst_ip="0.0.0.0/0",
+                               dst_port=dst_port, protocol=proto, src_port=0,
+                               zone_src="", zone_dst="")
+            rules = matcher.fullview_scan(flow)
+            total += len(rules)
+            flow_results.append({"flow": flow, "rules": rules, "mode": "src"})
+            info(f"src={addr}  →  {len(rules)} правил")
+
+    if dst_raw:
+        for addr in [a.strip() for a in dst_raw.replace("\n", ",").split(",") if a.strip()]:
+            flow = TrafficFlow(src_ip="0.0.0.0/0", dst_ip=_make_addr(addr),
+                               dst_port=dst_port, protocol=proto, src_port=0,
+                               zone_src="", zone_dst="")
+            rules = matcher.fullview_scan_dst(flow)
+            total += len(rules)
+            flow_results.append({"flow": flow, "rules": rules, "mode": "dst"})
+            info(f"dst={addr}  →  {len(rules)} правил")
+
+    ok(f"Всего правил найдено: {total}")
+
+    if getattr(args, "output", None):
+        query = {"src": src_raw or "any", "dst": dst_raw or "any",
+                 "dport": dport_raw, "proto": proto_raw}
+        export_fullview_json(flow_results, query, args.output,
+                             fetch_net_group=fetch_net, fetch_svc_group=fetch_svc)
+        ok(f"Fullview → {args.output}  ({total} правил)")
+
+
+def cmd_nat_audit(args):
+    """Показать NAT правила с типом, направлением и адресами трансляции."""
+    if getattr(args, "snapshot", None):
+        import json as _json
+        with open(args.snapshot, encoding="utf-8") as f:
+            snap = _json.load(f)
+        info(f"Снапшот: {args.snapshot}")
+        nat_rules = load_nat_rules_from_snapshot(snap)
+        matcher = build_matcher_from_snapshot(args.snapshot)
+    else:
+        source = build_source(args)
+        if getattr(args, "device", None):
+            device_group_id = args.device
+        else:
+            device_group_id, _ = select_device(source)
+        ok(f"Device Group ID:   {device_group_id}")
+        nat_rules = load_nat_rules(source, device_group_id)
+        matcher = build_matcher(source, device_group_id)
+
+    nat_type_filter = (getattr(args, "nat_type", None) or "all").lower()
+    if nat_type_filter == "snat":
+        nat_rules = [r for r in nat_rules if r.is_snat and not r.is_dnat]
+    elif nat_type_filter == "dnat":
+        nat_rules = [r for r in nat_rules if r.is_dnat and not r.is_snat]
+
+    ok(f"NAT правил загружено: {len(nat_rules)}")
+
+    associations = associate_nat_rules(nat_rules, matcher.rules, matcher.resolver)
+
+    if getattr(args, "json", None):
+        query = {
+            "nat_type": nat_type_filter,
+            "snapshot": getattr(args, "snapshot", None),
+        }
+        fetch_net = matcher.resolver._fetch_net_group
+        fetch_svc = matcher.resolver._fetch_svc_group
+        data = build_nat_audit_dict(associations, query, fetch_net, fetch_svc)
+        out = getattr(args, "json", None)
+        if out == "-":
+            print(json.dumps(data, ensure_ascii=False, indent=2))
+        else:
+            with open(out, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            ok(f"JSON сохранён: {out}")
+        return
+
+    print_nat_rules(nat_rules, associations=associations)

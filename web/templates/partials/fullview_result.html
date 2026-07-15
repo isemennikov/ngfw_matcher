@@ -1,0 +1,85 @@
+{% macro action_badge(action) %}
+  {% if action == 'allow' %}
+    <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-50 text-green-700 border border-green-200">ALLOW</span>
+  {% else %}
+    <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-50 text-red-700 border border-red-200">{{ action | upper }}</span>
+  {% endif %}
+{% endmacro %}
+
+{% macro addr_list(items, limit=6) %}
+  {% if items == ['ANY'] %}
+    <span class="text-slate-400 italic">ANY</span>
+  {% else %}
+    {% for item in items[:limit] %}
+      <span class="font-mono text-xs">{{ item }}</span>{% if not loop.last %}<span class="text-slate-300 mx-1">,</span>{% endif %}
+    {% endfor %}
+    {% if items | length > limit %}
+      <span class="text-slate-400 text-xs"> +{{ items | length - limit }}</span>
+    {% endif %}
+  {% endif %}
+{% endmacro %}
+
+<!-- Итог -->
+<div class="mb-4 text-sm text-slate-600">
+  Найдено правил: <strong class="text-slate-800">{{ total }}</strong>
+  из {{ n_rules }}
+  {% if overlap_mode %}<span class="ml-2 text-xs text-indigo-600 bg-indigo-50 border border-indigo-200 rounded px-1.5 py-0.5">overlap</span>{% endif %}
+</div>
+
+{% for entry in entries %}
+{% set mode_label = "sourceAddr" if entry.mode == "src" else "destinationAddr" %}
+{% set mode_color = "blue" if entry.mode == "src" else "purple" %}
+
+<!-- Заголовок группы -->
+<div class="flex items-center gap-2 mb-2 {% if not loop.first %}mt-6{% endif %}">
+  <span class="text-xs font-semibold text-{{ mode_color }}-700 bg-{{ mode_color }}-50 border border-{{ mode_color }}-200 rounded px-2 py-0.5">
+    {{ mode_label }}
+  </span>
+  <span class="font-mono text-sm text-slate-700">{{ entry.addr }}</span>
+  <span class="text-xs text-slate-400">→ {{ entry.rules | length }} правил</span>
+</div>
+
+{% if entry.rules %}
+<div class="rounded-xl border border-slate-200 overflow-hidden mb-2">
+  <table class="w-full text-xs">
+    <thead class="bg-slate-50 border-b border-slate-200">
+      <tr>
+        <th class="px-3 py-2 text-left font-medium text-slate-500 w-8">#</th>
+        <th class="px-3 py-2 text-left font-medium text-slate-500">Правило</th>
+        <th class="px-3 py-2 text-left font-medium text-slate-500 w-20">Действие</th>
+        <th class="px-3 py-2 text-left font-medium text-slate-500">Source</th>
+        <th class="px-3 py-2 text-left font-medium text-slate-500">Destination</th>
+        <th class="px-3 py-2 text-left font-medium text-slate-500">Service</th>
+      </tr>
+    </thead>
+    <tbody class="divide-y divide-slate-100">
+      {% for item in entry.rules %}
+      {% set rule = item.rule %}
+      <tr class="hover:bg-slate-50 {% if not rule.enabled %}opacity-50{% endif %}">
+        <td class="px-3 py-2 text-slate-400 font-mono">{{ rule.position_in_precedence or loop.index }}</td>
+        <td class="px-3 py-2">
+          <div class="flex items-center gap-1.5">
+            {% if rule.action == 'allow' %}
+              <span class="w-2 h-2 rounded-full bg-green-500 flex-shrink-0"></span>
+            {% else %}
+              <span class="w-2 h-2 rounded-full bg-red-500 flex-shrink-0"></span>
+            {% endif %}
+            <span class="font-medium text-slate-800 truncate max-w-[200px]" title="{{ rule.name }}">{{ rule.name }}</span>
+          </div>
+          <div class="text-slate-400 font-mono text-xs mt-0.5">{{ rule.precedence }}</div>
+        </td>
+        <td class="px-3 py-2">{{ action_badge(rule.action) }}</td>
+        <td class="px-3 py-2 text-slate-600">{{ addr_list(item.src) }}</td>
+        <td class="px-3 py-2 text-slate-600">{{ addr_list(item.dst) }}</td>
+        <td class="px-3 py-2 text-slate-600">{{ addr_list(item.svc) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% else %}
+<div class="text-sm text-slate-400 italic mb-2 px-1">Правила не найдены</div>
+{% endif %}
+
+{% endfor %}

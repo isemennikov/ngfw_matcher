@@ -7,9 +7,10 @@ import sys
 from typing import Optional
 
 from .output import info, ok, warn, err, die, _print_connection_banner, c, _C
-from ..core.models import NormalizedRule, TrafficFlow
+from ..core.models import NormalizedRule, NatRule, TrafficFlow
 from ..core.resolver import ObjectResolver
 from ..core.matcher import RuleMatcher
+from ..core.snapshot import get_group, get_effective_group
 from ..sources.ngfw_api import NGFWDirectSource
 from ..sources.backend_api import NGFWBackendSource
 
@@ -52,6 +53,8 @@ def _normalize_rule(raw: dict, index: int) -> NormalizedRule:
         source_zone      = raw.get("sourceZone"),
         destination_zone = raw.get("destinationZone"),
         application      = raw.get("application"),
+        source_group_id   = raw.get("_source_group_id", ""),
+        source_group_name = raw.get("_source_group_name", ""),
         raw              = raw,
     )
 
@@ -66,14 +69,59 @@ def _build_rules(raw_list: list[dict]) -> list[NormalizedRule]:
     return [r for r in rules if r.precedence != "default"]
 
 
-def build_matcher_from_snapshot(path: str, strict: bool = True) -> RuleMatcher:
-    """Load RuleMatcher from a snapshot file (rules + net/svc group caches)."""
+def _normalize_nat_rule(raw: dict, index: int) -> NatRule:
+    src_type = raw.get("srcTranslationType", "")
+    dst_type = raw.get("dstTranslationType", "")
+    return NatRule(
+        uid              = raw.get("id") or str(index),
+        name             = raw.get("name") or f"NatRule-{index}",
+        description      = raw.get("description") or "",
+        position         = raw.get("position", index + 1),
+        global_position  = raw.get("globalPosition", index + 1),
+        enabled          = bool(raw.get("enabled", True)),
+        precedence       = raw.get("_precedence", "pre"),
+        source_addr      = raw.get("sourceAddr"),
+        destination_addr = raw.get("destinationAddr"),
+        service          = raw.get("service"),
+        source_zone      = raw.get("sourceZone"),
+        destination_zone = raw.get("destinationZone"),
+        src_translation_type      = src_type,
+        src_translation_addr_type = raw.get("srcTranslationAddrType", ""),
+        src_translated_address    = raw.get("srcTranslatedAddress"),
+        src_translated_port       = raw.get("srcTranslatedPort"),
+        dst_translation_type   = dst_type,
+        dst_translated_address = raw.get("dstTranslatedAddress"),
+        dst_translated_port    = raw.get("dstTranslatedPort"),
+        source_group_id   = raw.get("_source_group_id", ""),
+        source_group_name = raw.get("_source_group_name", ""),
+        raw = raw,
+    )
+
+
+def load_nat_rules(source, device_group_id: str) -> list[NatRule]:
+    """Fetch NAT rules from API and normalize."""
+    raw_list = source.get_nat_rules(device_group_id)
+    return [_normalize_nat_rule(r, i) for i, r in enumerate(raw_list)]
+
+
+def load_nat_rules_from_snapshot(snap: dict, group_id: str | None = None,
+                                  include_parents: bool = False) -> list[NatRule]:
+    """Load NAT rules from an already-parsed snapshot dict (single or multi format)."""
+    grp = get_effective_group(snap, group_id, include_parents=include_parents)
+    raw_list = grp.get("nat_rules") or []
+    return [_normalize_nat_rule(r, i) for i, r in enumerate(raw_list)]
+
+
+def build_matcher_from_snapshot(path: str, strict: bool = True,
+                                 group_id: str | None = None) -> RuleMatcher:
+    """Load RuleMatcher from a snapshot file (single or multi format)."""
     info(f"Снапшот: {path}")
     with open(path, encoding="utf-8") as f:
         snap = json.load(f)
-    net_cache = snap.get("net_groups") or {}
-    svc_cache = snap.get("svc_groups") or {}
-    rules = _build_rules(snap.get("rules") or [])
+    grp = get_group(snap, group_id)
+    net_cache = grp.get("net_groups") or {}
+    svc_cache = grp.get("svc_groups") or {}
+    rules = _build_rules(grp.get("rules") or [])
     resolver = ObjectResolver(
         fetch_net_group=lambda gid: net_cache.get(gid, []),
         fetch_svc_group=lambda gid: svc_cache.get(gid, []),

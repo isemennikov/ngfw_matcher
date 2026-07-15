@@ -1,4 +1,4 @@
-"""ngfw-matcherer Web UI — FastAPI + HTMX."""
+"""ngfw-matcher Web UI — FastAPI + HTMX."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -11,7 +11,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from . import db
 from .deps import base_ctx
-from .routers import auth, devices, find, hits, match, shadows, snapshot
+from .routers import auth, compare, devices, find, fullview, hits, match, nat, shadows, snapshot
 
 SECRET_KEY = "ngfw-matcher-secret-change-in-prod"
 
@@ -24,16 +24,19 @@ app.add_middleware(SessionMiddleware, secret_key=SECRET_KEY, max_age=86400)
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 # Inject templates into routers
-for mod in (auth, devices, match, find, shadows, hits, snapshot):
+for mod in (auth, devices, match, find, shadows, hits, snapshot, fullview, nat, compare):
     mod.templates = templates
 
 app.include_router(auth.router)
 app.include_router(devices.router)
+app.include_router(compare.router)
 app.include_router(match.router)
 app.include_router(find.router)
 app.include_router(shadows.router)
 app.include_router(hits.router)
 app.include_router(snapshot.router)
+app.include_router(fullview.router)
+app.include_router(nat.router)
 
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")

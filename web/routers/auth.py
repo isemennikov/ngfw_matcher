@@ -1,4 +1,3 @@
-# Developed by Ilya Semennikov
 from __future__ import annotations
 
 from fastapi import APIRouter, Form, Request

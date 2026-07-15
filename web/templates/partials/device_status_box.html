@@ -1,0 +1,25 @@
+{% if selected_dev %}
+  <div class="mt-3 mx-3 rounded-lg border px-3 py-2
+    {% if selected_dev.last_sync %}bg-slate-800/60 border-slate-700/50
+    {% else %}bg-amber-950/30 border-amber-800/40{% endif %}">
+    {% if selected_dev.last_sync %}
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-1.5">
+          <span class="w-1.5 h-1.5 rounded-full bg-green-500 flex-shrink-0"></span>
+          <span class="text-xs text-green-400 font-medium">Снапшот актуален</span>
+        </div>
+        <span class="text-xs text-slate-600 font-mono">{{ selected_dev.last_sync[:10] }}</span>
+      </div>
+      <div class="mt-1.5 flex justify-between text-xs text-slate-600 border-t border-slate-700/50 pt-1.5">
+        <span>Правил</span>
+        <span class="font-mono text-slate-500">{{ selected_dev.rules_count }}</span>
+      </div>
+    {% else %}
+      <div class="flex items-center gap-1.5">
+        <span class="w-1.5 h-1.5 rounded-full bg-amber-500 flex-shrink-0 animate-pulse"></span>
+        <span class="text-xs text-amber-500 font-medium">Sync не выполнен</span>
+      </div>
+      <div class="text-xs text-slate-600 mt-1">Нажмите ↻ для загрузки правил</div>
+    {% endif %}
+  </div>
+{% endif %}

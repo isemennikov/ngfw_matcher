@@ -44,7 +44,10 @@
       {% if not r.enabled %}
         <span class="text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded">выключено</span>
       {% endif %}
-      <span class="text-xs text-slate-400 ml-auto">{{ r.precedence | upper }} #{{ r.position_in_precedence or r.index + 1 }} · глоб. #{{ r.index + 1 }}</span>
+      {% if r.source_group_name %}
+        <span class="text-xs px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 border border-slate-200">{{ r.source_group_name }}</span>
+      {% endif %}
+      <span class="text-xs text-slate-400 ml-auto" title="Порядковый номер в общем эффективном списке PRE+POST (с учётом родительских групп, если включено)">{{ r.precedence | upper }} #{{ r.position_in_precedence or r.index + 1 }} · глоб. #{{ r.index + 1 }}</span>
     </div>
 
     <!-- Поля -->
