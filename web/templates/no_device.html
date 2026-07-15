@@ -2,12 +2,57 @@
 {% block title %}ngfw-matcher{% endblock %}
 {% block header %}{% endblock %}
 {% block content %}
-<div class="flex flex-col items-center justify-center py-24 text-slate-400">
-  <svg class="w-12 h-12 mb-4 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+<div class="flex flex-col items-center justify-center py-24 text-center">
+
+  {% if not selected_dev and not offline_snap_active %}
+  {# ── Состояние 1: устройство не выбрано ─────────────────────────────── #}
+  <svg class="w-14 h-14 mb-5 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
       d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18"/>
   </svg>
-  <p class="text-sm">Выберите устройство в левой панели</p>
-  <a href="/" class="mt-3 text-sm text-blue-500 hover:text-blue-400">← К устройствам</a>
+  <p class="text-base font-medium text-slate-500 mb-1">Устройство не выбрано</p>
+  <p class="text-sm text-slate-400 max-w-xs">
+    Выберите устройство из дерева в левой панели, затем выполните Sync для загрузки правил.
+  </p>
+  <div class="mt-6 flex flex-col items-center gap-2 text-sm text-slate-500">
+    <div class="flex items-center gap-2">
+      <span class="w-6 h-6 rounded-full bg-slate-700 text-slate-300 flex items-center justify-center text-xs font-bold">1</span>
+      <span>Выберите устройство в левой панели</span>
+    </div>
+    <div class="flex items-center gap-2">
+      <span class="w-6 h-6 rounded-full bg-slate-700 text-slate-300 flex items-center justify-center text-xs font-bold">2</span>
+      <span>Нажмите ↻ для загрузки правил из СУ</span>
+    </div>
+    <div class="flex items-center gap-2">
+      <span class="w-6 h-6 rounded-full bg-slate-700 text-slate-300 flex items-center justify-center text-xs font-bold">3</span>
+      <span>Используйте любой инструмент анализа</span>
+    </div>
+  </div>
+
+  {% elif selected_dev and not selected_dev.last_sync %}
+  {# ── Состояние 2: устройство выбрано, синк не выполнен ──────────────── #}
+  <svg class="w-14 h-14 mb-5 text-amber-600/60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+      d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+  </svg>
+  <p class="text-base font-medium text-slate-500 mb-1">Синхронизация не выполнена</p>
+  <p class="text-sm text-slate-400 max-w-xs">
+    Устройство <span class="text-slate-300 font-medium">{{ selected_dev.name }}</span> выбрано,
+    но правила ещё не загружены. Нажмите <span class="font-mono text-amber-500">↻</span> в левой панели.
+  </p>
+
+  {% else %}
+  {# ── Состояние 3: оффлайн или другое ────────────────────────────────── #}
+  <svg class="w-14 h-14 mb-5 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+      d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
+  </svg>
+  <p class="text-base font-medium text-slate-500 mb-1">Источник данных не найден</p>
+  <p class="text-sm text-slate-400 max-w-xs">
+    Загрузите JSON-снапшот через раздел <strong>Снапшот</strong> или выполните Sync устройства.
+  </p>
+  <a href="/snapshot" class="mt-4 text-sm text-blue-500 hover:text-blue-400">Загрузить снапшот →</a>
+  {% endif %}
+
 </div>
 {% endblock %}

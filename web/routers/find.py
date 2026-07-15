@@ -5,7 +5,8 @@ from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
-from ..deps import require_matcher, base_ctx, has_data_source
+from ..deps import require_matcher, base_ctx, has_data_source, json_download
+from ...core.export import build_find_dict
 from ...core.resolver import is_any_kind, PROTO
 
 router = APIRouter()
@@ -88,6 +89,61 @@ async def do_find(
         "n_rules": len(matcher.rules),
         "pattern": pattern,
     })
+
+
+@router.post("/find-rule/export")
+async def export_find(
+    request: Request,
+    pattern: str = Form(""),
+    dport:   str = Form(""),
+    proto:   str = Form(""),
+):
+    try:
+        matcher = require_matcher(request)
+    except Exception as e:
+        from fastapi.responses import Response as _R
+        return _R(content=str(e), status_code=400)
+
+    pattern = pattern.strip()
+    dport   = dport.strip()
+    proto   = proto.strip().lower()
+
+    rules = matcher.rules
+    if pattern:
+        if _UUID_RE.match(pattern):
+            rules = [r for r in rules if r.uid.lower() == pattern.lower()]
+        else:
+            pl = pattern.lower()
+            rules = [r for r in rules if pl in r.name.lower()]
+
+    if dport or proto:
+        from ...core.models import TrafficFlow
+        from ...core.matcher import RuleMatcher
+        port = 0
+        if dport and dport.lower() != "any":
+            try:
+                port = int(dport)
+            except ValueError:
+                pass
+        proto_f = proto or "any"
+        filtered = []
+        for r in rules:
+            svcs = matcher.resolver.resolve_field_service(r.service)
+            if svcs == [("any", 0, 65535)]:
+                continue
+            flow = TrafficFlow(src_ip="0.0.0.0/0", dst_ip="0.0.0.0/0",
+                               dst_port=port, protocol=proto_f,
+                               src_port=0, zone_src="", zone_dst="")
+            if RuleMatcher._service_matches(flow, svcs):
+                filtered.append(r)
+        rules = filtered
+
+    rules = sorted(rules, key=lambda r: r.index)
+
+    fetch_net = matcher.resolver._fetch_net_group
+    fetch_svc = matcher.resolver._fetch_svc_group
+    query = {"pattern": pattern or "*", "dport": dport or "any", "proto": proto or "any"}
+    return json_download(build_find_dict(rules, query, fetch_net, fetch_svc), "find_rule")
 
 
 def _build_card(rule, fetch_net, fetch_svc) -> dict:

@@ -9,7 +9,7 @@ from fastapi.responses import HTMLResponse, Response
 from fastapi.templating import Jinja2Templates
 
 from .. import db
-from ..deps import require_connection, require_matcher, base_ctx
+from ..deps import require_connection, require_matcher, base_ctx, json_download
 
 log = logging.getLogger("ngfw.hits")
 router = APIRouter()
@@ -29,6 +29,26 @@ async def hits_page(request: Request):
     ctx["has_data"] = bool(rows)
     ctx.update(_table_ctx(rows, synced_at))
     return templates.TemplateResponse(request, "hits.html", ctx)
+
+
+@router.get("/hits/export")
+async def export_hits(request: Request):
+    device_id = request.session.get("selected_device")
+    if not device_id:
+        from fastapi.responses import Response as _R
+        return _R(content="No device selected", status_code=400)
+    rows      = db.get_rule_hits(device_id)
+    synced_at = db.get_hits_synced_at(device_id)
+    output = {
+        "synced_at": synced_at,
+        "total":     len(rows),
+        "rules": [
+            {"name": r["name"], "uid": r["rule_id"],
+             "hits": r["hits"], "enabled": r["enabled"]}
+            for r in rows
+        ],
+    }
+    return json_download(output, "rule_hits")
 
 
 @router.post("/hits/sync", response_class=HTMLResponse)

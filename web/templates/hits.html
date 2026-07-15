@@ -3,7 +3,7 @@
 {% block header %}Rule Hits{% endblock %}
 {% block content %}
 
-<div class="max-w-4xl">
+<div class="max-w-4xl" x-data="{ sortByHits: {{ 'true' if sorted_by_hits else 'false' }} }">
 
   <!-- Панель управления -->
   <div class="bg-white rounded-xl border border-slate-200 p-5 mb-5">
@@ -53,6 +53,15 @@
             </svg>
             Обновить из СУ
           </button>
+          <a href="/hits/export"
+             class="flex items-center gap-2 border border-slate-200 bg-white hover:bg-slate-50
+                    text-slate-600 text-sm font-medium px-4 py-2 rounded-lg transition-colors">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+            </svg>
+            Скачать JSON
+          </a>
         </div>
       </form>
     </div>
@@ -63,7 +72,7 @@
           hx-target="#hits-result"
           hx-swap="innerHTML"
           class="mt-4 pt-4 border-t border-slate-100">
-      <input type="hidden" name="sort_by_hits" id="sort-by-hits-field" value="">
+      <input type="hidden" name="sort_by_hits" :value="sortByHits ? '1' : ''">
       <input type="text" name="rule_filter"
              placeholder="Фильтр по имени правила…"
              hx-trigger="input changed delay:300ms"
@@ -84,15 +93,4 @@
     {% endif %}
   </div>
 </div>
-
-<script>
-// Кнопка "Hits" в заголовке таблицы переключает sort_by_hits
-// и отправляет форму
-document.addEventListener('click', function(e) {
-  const btn = e.target.closest('button[name="sort_by_hits"]');
-  if (!btn) return;
-  const field = document.getElementById('sort-by-hits-field');
-  if (field) field.value = btn.value;
-});
-</script>
 {% endblock %}

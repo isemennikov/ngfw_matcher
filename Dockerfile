@@ -1,3 +1,14 @@
+# Статическая сборка Tailwind CSS — без CDN-рантайма в браузере
+FROM node:20-slim AS assets
+
+WORKDIR /build
+COPY package.json tailwind.config.js ./
+COPY web/templates ./web/templates
+COPY web/static/css/input.css ./web/static/css/input.css
+RUN npm install --no-audit --no-fund && \
+    npx tailwindcss -i web/static/css/input.css -o web/static/css/tailwind.css --minify
+
+
 FROM python:3.11-slim
 
 WORKDIR /app
@@ -14,6 +25,7 @@ RUN pip install --no-cache-dir \
 
 # Копируем исходный код в /app/ngfw_matcher/ — чтобы работал import ngfw_matcher
 COPY . /app/ngfw_matcher/
+COPY --from=assets /build/web/static/css/tailwind.css /app/ngfw_matcher/web/static/css/tailwind.css
 
 EXPOSE 8080
 

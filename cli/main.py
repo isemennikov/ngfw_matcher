@@ -1,5 +1,5 @@
-# Developed by Ilya Semennikov
 """
+ngfw-matcher — CLI для симуляции трафика через политию PT NGFW.
 
 Два источника данных (выбираются флагом --source):
     ngfw    [приоритет] — прямой PT NGFW API (актуальные данные)
@@ -20,7 +20,7 @@ import sys
 
 from .output import die, print_version_footer
 from .builder import _normalize_rule  # re-exported: used by web/state.py and web/routers/devices.py
-from .commands import run, cmd_test_connection, cmd_find_rule, cmd_check_shadowed, cmd_rule_hits
+from .commands import run, cmd_test_connection, cmd_find_rule, cmd_check_shadowed, cmd_rule_hits, cmd_fullview, cmd_nat_audit
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -110,6 +110,38 @@ def build_parser() -> argparse.ArgumentParser:
     rh.add_argument("--sort-hits", action="store_true",
                     help="Сортировать по убыванию hits")
 
+    # ── fullview ───────────────────────────────────────────────────────────────
+    fv = sub.add_parser("fullview",
+                        help="Найти все правила где IP фигурирует в source или destination")
+    fv.add_argument("--src", metavar="IP/CIDR[,...]",
+                    help="Искать в sourceAddr. Несколько через запятую.")
+    fv.add_argument("--dst", metavar="IP/CIDR[,...]",
+                    help="Искать в destinationAddr. Несколько через запятую.")
+    fv.add_argument("--dport", metavar="PORTS",
+                    help="Фильтр по порту: 443, 80-90, 80,443, any. По умолчанию: any")
+    fv.add_argument("--proto", metavar="PROTO", default="any",
+                    help="tcp | udp | icmp | any (по умолчанию: any)")
+    fv.add_argument("--overlap", action="store_true",
+                    help="Включать правила с подсетями (overlap-режим)")
+    fv.add_argument("--output", metavar="FILE.json",
+                    help="Сохранить результаты в JSON с раскрытыми объектами")
+    fv.add_argument("--source", choices=["ngfw", "backend"], default="ngfw")
+    fv.add_argument("--backend-host", metavar="URL")
+    fv.add_argument("--device", metavar="DEVICE_GROUP_ID")
+    fv.add_argument("--snapshot", metavar="FILE.json", help="Снапшот ngfw-matcher (офлайн)")
+
+    # ── nat-audit ──────────────────────────────────────────────────────────────
+    na = sub.add_parser("nat-audit",
+                        help="Показать NAT правила: тип (SNAT/DNAT), направление, адреса трансляции")
+    na.add_argument("--source", choices=["ngfw", "backend"], default="ngfw")
+    na.add_argument("--backend-host", metavar="URL")
+    na.add_argument("--device", metavar="DEVICE_GROUP_ID")
+    na.add_argument("--snapshot", metavar="FILE.json", help="Снапшот ngfw-matcher (офлайн)")
+    na.add_argument("--type", dest="nat_type", choices=["snat", "dnat", "all"], default="all",
+                    help="Фильтр по типу: snat | dnat | all (по умолчанию: all)")
+    na.add_argument("--json", metavar="FILE|-",
+                    help="Экспорт результатов с ассоциацией в JSON (- для stdout)")
+
     return p
 
 
@@ -140,6 +172,10 @@ def main():
             cmd_check_shadowed(args)
         elif args.command == "rule-hits":
             cmd_rule_hits(args)
+        elif args.command == "fullview":
+            cmd_fullview(args)
+        elif args.command == "nat-audit":
+            cmd_nat_audit(args)
         print_version_footer()
     except KeyboardInterrupt:
         print("\nПрервано.", file=sys.stderr)

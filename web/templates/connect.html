@@ -2,8 +2,11 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ngfw-matcher — Подключение</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+  <meta name="theme-color" content="#0f172a">
+  <link rel="stylesheet" href="/static/css/tailwind.css">
 </head>
 <body class="bg-slate-900 flex items-center justify-center min-h-screen">
   <div class="bg-slate-800 rounded-xl shadow-2xl p-8 w-full max-w-sm">
@@ -48,11 +51,22 @@
       </div>
       <div>
         <label class="block text-xs font-medium text-slate-400 mb-1.5">Пароль</label>
-        <input type="password" name="password" required
-               placeholder="••••••••"
-               autocomplete="current-password"
-               class="w-full bg-slate-700 border border-slate-600 text-slate-100 text-sm rounded-lg
-                      px-3 py-2.5 focus:outline-none focus:border-blue-500 placeholder-slate-500">
+        <div class="relative">
+          <input type="password" name="password" id="password-input" required
+                 placeholder="••••••••"
+                 autocomplete="current-password"
+                 class="w-full bg-slate-700 border border-slate-600 text-slate-100 text-sm rounded-lg
+                        px-3 py-2.5 pr-10 focus:outline-none focus:border-blue-500 placeholder-slate-500">
+          <button type="button" id="toggle-password"
+                  aria-label="Показать пароль"
+                  class="absolute inset-y-0 right-0 flex items-center px-3 text-slate-400 hover:text-slate-200">
+            <svg id="eye-icon" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z"/>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+            </svg>
+          </button>
+        </div>
       </div>
       <button type="submit" id="submit-btn"
               class="w-full bg-blue-600 hover:bg-blue-500 text-white font-medium text-sm
@@ -77,6 +91,14 @@
 
       userInput.addEventListener('input', checkRo);
       checkRo();
+
+      const pwInput  = document.getElementById('password-input');
+      const pwToggle = document.getElementById('toggle-password');
+      pwToggle.addEventListener('click', function() {
+        const shown = pwInput.type === 'text';
+        pwInput.type = shown ? 'password' : 'text';
+        pwToggle.setAttribute('aria-label', shown ? 'Показать пароль' : 'Скрыть пароль');
+      });
     </script>
   </div>
 </body>

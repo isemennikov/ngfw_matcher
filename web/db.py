@@ -83,6 +83,20 @@ def update_device_snapshot(id: str, snapshot_path: str,
         """, (snapshot_path, last_sync, rules_count, id))
 
 
+def update_devices_snapshot_for_host(host: str, snapshot_path: str,
+                                      last_sync: str, rules_by_id: dict[str, int]):
+    """После sync всего дерева СУ — один общий снапшот для всех групп устройства."""
+    with _conn() as con:
+        rows = con.execute("SELECT id FROM devices WHERE host=?", (host,)).fetchall()
+        con.executemany("""
+            UPDATE devices SET snapshot_path=?, last_sync=?, rules_count=?
+            WHERE id=?
+        """, [
+            (snapshot_path, last_sync, rules_by_id.get(row["id"], 0), row["id"])
+            for row in rows
+        ])
+
+
 def get_device(id: str) -> dict | None:
     with _conn() as con:
         row = con.execute("SELECT * FROM devices WHERE id=?", (id,)).fetchone()
@@ -137,6 +151,7 @@ def clear_devices_for_host(host: str):
                         device_ids)
             con.execute(f"DELETE FROM rule_hits WHERE device_id IN ({placeholders})",
                         device_ids)
+        con.execute("DELETE FROM sync_jobs WHERE device_id=?", (host,))
         con.execute("DELETE FROM devices WHERE host=?", (host,))
 
 

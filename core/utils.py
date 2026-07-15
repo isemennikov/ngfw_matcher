@@ -1,5 +1,4 @@
-# Developed by Ilya Semennikov
-"""Утилиты анализа общего портов , используемые CLI и веб-роутерах."""
+"""Shared port-parsing utilities used by CLI and web routers."""
 from __future__ import annotations
 
 

@@ -1,0 +1,10 @@
+{
+  "name": "ngfw-matcher-web-assets",
+  "private": true,
+  "scripts": {
+    "build:css": "tailwindcss -i web/static/css/input.css -o web/static/css/tailwind.css --minify"
+  },
+  "devDependencies": {
+    "tailwindcss": "^3.4.0"
+  }
+}

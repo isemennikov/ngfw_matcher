@@ -11,6 +11,18 @@
   </div>
 {% elif status == 'done' %}
   <div class="text-xs text-green-400">✓ {{ message }}</div>
+  <div id="device-tree-rows" hx-swap-oob="true">
+    {% include "partials/device_tree_rows.html" %}
+  </div>
+  <div id="device-status-box" hx-swap-oob="true">
+    {% include "partials/device_status_box.html" %}
+  </div>
 {% else %}
-  <div class="text-xs text-red-400">✗ {{ message }}</div>
+  <div class="text-xs text-red-400 cursor-help"
+       title="{{ detail }}">
+    ✗ Ошибка синхронизации
+    {% if message %}
+      <span class="block mt-0.5 text-red-500/70 font-mono break-all">{{ message[:120] }}{% if message|length > 120 %}…{% endif %}</span>
+    {% endif %}
+  </div>
 {% endif %}

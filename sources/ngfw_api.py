@@ -4,8 +4,10 @@
 
 BASE_URL строится из --host:
     https://10.1.31.100            →  https://10.1.31.100/api/v2
+    https://10.1.31.100/api/v2     →  https://10.1.31.100/api/v2  (уже готово)
     https://localhost:3223         →  https://localhost:3223/api/v2  (туннель)
-    
+    https://localhost:3223/api/v2  →  https://localhost:3223/api/v2  (туннель)
+
 Все запросы — POST на {BASE_URL}/{Operation} с JSON-телом.
 """
 from __future__ import annotations
@@ -323,6 +325,36 @@ class NGFWDirectSource:
                 "offset":        offset,
             }
             resp, _ = self._post("ListSecurityRules", body)
+            page  = resp.get("items") or []
+            total = resp.get("total", 0)
+            items.extend(page)
+            offset += len(page)
+            if not page or offset >= total:
+                break
+        return items
+
+    def get_nat_rules(self, device_group_id: str) -> list[dict]:
+        all_rules: list[dict] = []
+        for precedence in ("pre", "post"):
+            rules = self._list_nat_rules_paged(device_group_id, precedence)
+            for r in rules:
+                r["_precedence"] = precedence
+            all_rules.extend(rules)
+            log.info("NAT precedence=%-6s → %d rules", precedence, len(rules))
+        all_rules.sort(key=lambda r: r.get("globalPosition", r.get("position", 0)))
+        return all_rules
+
+    def _list_nat_rules_paged(self, device_group_id: str, precedence: str) -> list[dict]:
+        items:  list[dict] = []
+        offset: int        = 0
+        while True:
+            body: dict = {
+                "limit":         PAGE_SIZE,
+                "deviceGroupId": device_group_id,
+                "precedence":    precedence,
+                "offset":        offset,
+            }
+            resp, _ = self._post("ListNatRules", body)
             page  = resp.get("items") or []
             total = resp.get("total", 0)
             items.extend(page)

@@ -10,9 +10,20 @@ import sys
 from typing import TextIO
 
 from .._version import __version__
-from ..core.models import MatchResult, NormalizedRule
+from ..core.models import MatchResult, NormalizedRule, NatRule
+from ..core.nat_audit import NatAssociation
 from ..core.resolver import PROTO, is_any_kind
 from ..core.utils import port_str as _port_str
+from ..core.export import (
+    json_meta as _json_meta,
+    serialize_net_field   as _serialize_net_field,
+    serialize_src_field   as _serialize_src_field,
+    serialize_svc_field   as _serialize_svc_field,
+    serialize_app_field   as _serialize_app_field,
+    build_fullview_dict,
+    build_shadows_dict,
+    build_find_dict,
+)
 
 
 # ─── ANSI цвета ──────────────────────────────────────────────────────────────
@@ -442,259 +453,23 @@ def print_summary(results: list[MatchResult], out: TextIO = sys.stdout):
     out.write(c("═" * 72 + "\n\n", _C.BOLD))
 
 
-# ─── Fullview JSON ───────────────────────────────────────────────────────────
-
-def _serialize_net_obj(obj: dict, fetch_group=None, _depth: int = 0) -> dict:
-    if "networkIpAddress" in obj:
-        a = obj["networkIpAddress"]
-        return {"type": "ipAddress", "id": a.get("id"), "inet": a.get("inet")}
-    if "networkIpRange" in obj:
-        r = obj["networkIpRange"]
-        return {"type": "ipRange", "id": r.get("id"), "from": r.get("from"), "to": r.get("to")}
-    if "networkFqdn" in obj:
-        f = obj["networkFqdn"]
-        return {"type": "fqdn", "id": f.get("id"), "fqdn": f.get("fqdn")}
-    if "networkGeoAddress" in obj:
-        g = obj["networkGeoAddress"]
-        return {"type": "geoAddress", "id": g.get("id"), "geoId": g.get("geoId")}
-    if "networkGroup" in obj:
-        g = obj["networkGroup"]
-        gid = g.get("id")
-        entry: dict = {"type": "group", "id": gid, "name": g.get("name")}
-        if fetch_group and gid and _depth < 4:
-            try:
-                members = fetch_group(gid)
-                entry["members"] = [_serialize_net_obj(m, fetch_group, _depth + 1) for m in members]
-            except Exception:
-                pass
-        return entry
-    return {"type": "unknown", "raw": obj}
-
-
-def _serialize_net_field(field: dict | None, fetch_group=None) -> dict:
-    if field is None:
-        return {"kind": "RULE_KIND_ANY"}
-    if is_any_kind(field):
-        return {"kind": "RULE_KIND_ANY"}
-    objects = [_serialize_net_obj(obj, fetch_group) for obj in (field.get("objects") or [])]
-    return {"kind": field.get("kind", "RULE_KIND_LIST"), "objects": objects}
-
-
-# ── Фильтрующий вариант для поля source ──────────────────────────────────────
-
-def _net_obj_matches_src(obj: dict, src, fetch_group=None, _depth: int = 0) -> bool:
-    """True если объект покрывает запрошенный src (IPv4Address или IPv4Network)."""
-    if "networkIpAddress" in obj:
-        inet = obj["networkIpAddress"].get("inet", "")
-        if not inet:
-            return False
-        try:
-            if "/" not in inet and ":" not in inet:
-                inet = inet + "/32"
-            net = ipaddress.ip_network(inet, strict=False)
-            if isinstance(src, (ipaddress.IPv4Address, ipaddress.IPv6Address)):
-                return src in net
-            return src.subnet_of(net)  # IPv4Network: src ⊆ rule_net
-        except (ValueError, TypeError):
-            return False
-
-    if "networkIpRange" in obj:
-        r = obj["networkIpRange"]
-        try:
-            start = ipaddress.ip_address(r.get("from", ""))
-            end   = ipaddress.ip_address(r.get("to",   ""))
-            if isinstance(src, (ipaddress.IPv4Address, ipaddress.IPv6Address)):
-                return start <= src <= end
-            # Для CIDR: весь диапазон запроса должен быть внутри range
-            return start <= src.network_address and src.broadcast_address <= end
-        except (ValueError, TypeError):
-            return False
-
-    if "networkFqdn" in obj or "networkGeoAddress" in obj:
-        return False
-
-    if "networkGroup" in obj:
-        gid = obj["networkGroup"].get("id")
-        if not gid or not fetch_group or _depth >= 4:
-            return False
-        try:
-            return any(
-                _net_obj_matches_src(m, src, fetch_group, _depth + 1)
-                for m in fetch_group(gid)
-            )
-        except Exception:
-            return False
-
-    return False
-
-
-def _serialize_net_obj_filtered(obj: dict, src, fetch_group=None,
-                                 _depth: int = 0) -> dict | None:
-    """
-    Сериализует объект, если он покрывает src. Иначе None.
-    Для группы показывает только matching members.
-    """
-    if "networkIpAddress" in obj:
-        if not _net_obj_matches_src(obj, src):
-            return None
-        a = obj["networkIpAddress"]
-        return {"type": "ipAddress", "id": a.get("id"), "inet": a.get("inet")}
-
-    if "networkIpRange" in obj:
-        if not _net_obj_matches_src(obj, src):
-            return None
-        r = obj["networkIpRange"]
-        return {"type": "ipRange", "id": r.get("id"),
-                "from": r.get("from"), "to": r.get("to")}
-
-    if "networkFqdn" in obj or "networkGeoAddress" in obj:
-        return None  # никогда не оставляем в filtered source
-
-    if "networkGroup" in obj:
-        g   = obj["networkGroup"]
-        gid = g.get("id")
-        if not fetch_group or not gid or _depth >= 4:
-            return None
-        try:
-            filtered = [
-                _serialize_net_obj_filtered(m, src, fetch_group, _depth + 1)
-                for m in fetch_group(gid)
-            ]
-            matching = [m for m in filtered if m is not None]
-        except Exception:
-            return None
-        if not matching:
-            return None
-        return {"type": "group", "id": gid, "name": g.get("name"), "members": matching}
-
-    return None
-
-
-def _serialize_src_field(field: dict | None, src_str: str, fetch_group=None) -> dict:
-    """
-    Поле source с фильтром: оставляем только объекты/члены групп,
-    которые содержат запрошенный src. FQDN/geo всегда убираем.
-    """
-    if field is None:
-        return {"kind": "RULE_KIND_ANY"}
-    if is_any_kind(field):
-        return {"kind": "RULE_KIND_ANY"}
-
-    try:
-        src = (ipaddress.ip_network(src_str, strict=False)
-               if "/" in src_str
-               else ipaddress.ip_address(src_str))
-    except ValueError:
-        # Не смогли распарсить — возвращаем без фильтра
-        return _serialize_net_field(field, fetch_group)
-
-    objects = [
-        _serialize_net_obj_filtered(obj, src, fetch_group)
-        for obj in (field.get("objects") or [])
-    ]
-    return {"kind": field.get("kind", "RULE_KIND_LIST"), "objects": [o for o in objects if o is not None]}
-
-
-def _serialize_svc_obj(item: dict, fetch_group=None, _depth: int = 0) -> dict:
-    if "service" in item:
-        svc = item["service"]
-        proto = PROTO.get(svc.get("protocol", 0), str(svc.get("protocol", 0)))
-        entry: dict = {"type": "service", "id": svc.get("id"), "protocol": proto}
-        dst_ports = [_port_str(sp) for sp in (svc.get("dstPorts") or [])]
-        src_ports = [_port_str(sp) for sp in (svc.get("srcPorts") or [])]
-        if dst_ports:
-            entry["dst_ports"] = dst_ports
-        if src_ports:
-            entry["src_ports"] = src_ports
-        return entry
-    if "serviceGroup" in item:
-        g = item["serviceGroup"]
-        gid = g.get("id")
-        entry = {"type": "serviceGroup", "id": gid, "name": g.get("name")}
-        if fetch_group and gid and _depth < 4:
-            try:
-                members = fetch_group(gid)
-                entry["members"] = [_serialize_svc_obj(m, fetch_group, _depth + 1) for m in members]
-            except Exception:
-                pass
-        return entry
-    return {"type": "unknown", "raw": item}
-
-
-def _serialize_svc_field(field: dict | None, fetch_group=None) -> dict:
-    if is_any_kind(field):
-        return {"kind": "RULE_KIND_ANY"}
-    objects = [_serialize_svc_obj(item, fetch_group) for item in (field.get("objects") or [])]
-    return {"kind": field.get("kind", "RULE_KIND_LIST"), "objects": objects}
-
-
-def _serialize_app_field(field: dict | None) -> dict | None:
-    if field is None:
-        return None
-    if field.get("kind") != "RULE_KIND_LIST":
-        return None
-    objects = [
-        {"id": obj.get("id"), "name": obj.get("name") or obj.get("uniqueName")}
-        for obj in (field.get("objects") or [])
-    ]
-    return {"kind": "RULE_KIND_LIST", "objects": objects} if objects else None
-
+# ─── Fullview / find-rule / shadows JSON — делегируем в core.export ─────────
 
 def export_fullview_json(flow_results: list[dict], query: dict, path: str,
                          fetch_net_group=None, fetch_svc_group=None):
-    """
-    Сохраняет fullview-результаты в JSON.
-    flow_results — список: {"flow": TrafficFlow, "rules": list[NormalizedRule]}
-    fetch_net_group/fetch_svc_group — callback'и для раскрытия групп.
-    """
-    flows_out = []
-    for entry in flow_results:
-        flow  = entry["flow"]
-        rules = entry["rules"]
-        rules_out = []
-        for rule in rules:
-            r_dict: dict = {
-                "name":            rule.name,
-                "uid":             rule.uid,
-                "action":          rule.action,
-                "enabled":         rule.enabled,
-                "precedence":      rule.precedence,
-                "position_in_set": rule.position_in_precedence or (rule.index + 1),
-                "global_position": rule.index + 1,
-                "source":          _serialize_src_field(rule.source_addr, flow.src_ip, fetch_net_group),
-                "destination":     _serialize_net_field(rule.destination_addr, fetch_net_group),
-                "service":         _serialize_svc_field(rule.service, fetch_svc_group),
-            }
-            app = _serialize_app_field(rule.application)
-            if app:
-                r_dict["application"] = app
-            rules_out.append(r_dict)
-
-        flows_out.append({
-            "src":           flow.src_ip,
-            "dst":           flow.dst_ip,
-            "dport":         flow.dst_port if flow.dst_port else "any",
-            "proto":         flow.protocol,
-            "matched_count": len(rules_out),
-            "rules":         rules_out,
-        })
-
-    # Один поток — плоская структура; несколько — массив flows
-    if len(flows_out) == 1:
-        output = {
-            "query":         query,
-            "matched_count": flows_out[0]["matched_count"],
-            "rules":         flows_out[0]["rules"],
-        }
-    else:
-        output = {"query": query, "flows": flows_out}
-
-    output = {"_ngfw_matcher": _json_meta(), **output}
+    output = build_fullview_dict(flow_results, query, fetch_net_group, fetch_svc_group)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(output, f, ensure_ascii=False, indent=2)
-
-    total = sum(f["matched_count"] for f in flows_out)
+    total = sum(len(e.get("rules", [])) for e in flow_results)
     print(c(f"[+] Fullview → {path}  ({total} правил)", _C.GREEN))
+
+
+def export_shadowed_json(results: list[dict], path: str,
+                         fetch_net_group=None, fetch_svc_group=None):
+    output = build_shadows_dict(results, {}, fetch_net_group, fetch_svc_group)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(output, f, ensure_ascii=False, indent=2)
+    print(c(f"[+] Теневые правила → {path}  ({output['total']} записей)", _C.GREEN))
 
 
 # ─── Экспорт CSV ─────────────────────────────────────────────────────────────
@@ -1099,3 +874,151 @@ def print_hits_table(rows: list[dict]) -> None:
         summary += f"   {c(f'Без срабатываний: {zero_cnt}', _C.DIM)}"
     print(c(summary, _C.DIM))
     print()
+
+# ─── NAT правила ─────────────────────────────────────────────────────────────
+
+def _nat_field_nets(field: dict | None) -> list[str]:
+    """Извлекает читаемые адреса из RuleFieldNetwork (сетевое поле NAT правила)."""
+    if not field or field.get("kind") != "RULE_KIND_LIST":
+        return ["ANY"]
+    out = []
+    for obj in (field.get("objects") or []):
+        if "networkIpAddress" in obj:
+            out.append(obj["networkIpAddress"].get("inet", "?"))
+        elif "networkIpRange" in obj:
+            r = obj["networkIpRange"]
+            out.append(f"{r.get('from','?')}–{r.get('to','?')}")
+        elif "networkFqdn" in obj:
+            out.append(f"FQDN:{obj['networkFqdn'].get('fqdn','?')}")
+        elif "networkGeoAddress" in obj:
+            out.append(f"GeoIP:{obj['networkGeoAddress'].get('geoId','?')}")
+        elif "networkGroup" in obj:
+            out.append(f"[{obj['networkGroup'].get('name','группа')}]")
+    return out or ["ANY"]
+
+
+def _nat_field_svcs(field: dict | None) -> list[str]:
+    """Извлекает читаемые сервисы из RuleFieldService NAT правила."""
+    if not field or field.get("kind") != "RULE_KIND_LIST":
+        return ["ANY"]
+    out = []
+    for item in (field.get("objects") or []):
+        if "service" in item:
+            svc  = item["service"]
+            p    = PROTO.get(svc.get("protocol", 0), "?")
+            pts  = []
+            for port_obj in (svc.get("dstPorts") or []):
+                if "singlePort" in port_obj:
+                    pts.append(str(port_obj["singlePort"].get("port", "")))
+                elif "portRange" in port_obj:
+                    pr = port_obj["portRange"]
+                    pts.append(f"{pr.get('from','')}–{pr.get('to','')}")
+            out.append(f"{p.upper()}/{','.join(pts)}" if pts else p.upper())
+        elif "serviceGroup" in item:
+            out.append(f"[{item['serviceGroup'].get('name','группа')}]")
+    return out or ["ANY"]
+
+
+def _nat_translated_port(port_field: dict | None) -> str:
+    """Читаемое представление srcTranslatedPort."""
+    if not port_field:
+        return ""
+    if "portNum" in port_field:
+        p = port_field["portNum"].get("port")
+        if p:
+            return f":{p}"
+    if "portRange" in port_field:
+        pr = port_field["portRange"]
+        return f":{pr.get('from','')}–{pr.get('to','')}"
+    return ""
+
+
+def print_nat_rules(
+    nat_rules: list[NatRule],
+    associations: list[NatAssociation] | None = None,
+) -> None:
+    """Вывод NAT правил с типом, направлением, адресами трансляции и ассоциированными правилами."""
+    SEP = c("═" * 72, _C.DIM)
+    assoc_map = {a.nat_rule.uid: a for a in (associations or [])}
+    print()
+    print(SEP)
+    print(c(f"  NAT ПРАВИЛА  ({len(nat_rules)} шт.)", _C.BOLD))
+    print(SEP)
+
+    for rule in nat_rules:
+        # ── Заголовок ───────────────────────────────────────────────────────
+        st      = c("ON ", _C.GREEN) if rule.enabled else c("OFF", _C.YELLOW)
+        prec    = c(rule.precedence, _C.CYAN)
+        arrow   = c(rule.direction_arrow, _C.BOLD)
+        nat_lbl = c(rule.nat_type, _C.YELLOW, _C.BOLD) if rule.nat_type != "—" else c("—", _C.DIM)
+        print()
+        print(f"  {nat_lbl}  {arrow}  {c(rule.name, _C.CYAN, _C.BOLD)}  "
+              f"#{rule.position} {prec}  {st}")
+        print(c("  " + "─" * 68, _C.DIM))
+
+        # ── Условия матчинга ─────────────────────────────────────────────────
+        srcs = _nat_field_nets(rule.source_addr)
+        dsts = _nat_field_nets(rule.destination_addr)
+        svcs = _nat_field_svcs(rule.service)
+
+        print(f"  {c('Src:', _C.DIM):<20} {', '.join(srcs)}")
+        print(f"  {c('Dst:', _C.DIM):<20} {', '.join(dsts)}")
+        print(f"  {c('Svc:', _C.DIM):<20} {', '.join(svcs)}")
+
+        # ── Трансляция источника (SNAT) ──────────────────────────────────────
+        if rule.is_snat:
+            t_addrs = _nat_field_nets(rule.src_translated_address)
+            t_port  = _nat_translated_port(rule.src_translated_port)
+            src_str = ', '.join(srcs)
+            dst_str = ', '.join(t_addrs) + t_port
+            masq    = "TRANSLATED" not in rule.src_translation_addr_type
+            lbl     = c("Masquerade", _C.DIM) if masq else ""
+            print(f"  {c('SNAT  -->:', _C.GREEN):<20} "
+                  f"{c(src_str, _C.BLUE)} --> {c(dst_str, _C.WHITE)} {lbl}")
+
+        # ── Трансляция назначения (DNAT) ─────────────────────────────────────
+        if rule.is_dnat:
+            t_addrs  = _nat_field_nets(rule.dst_translated_address)
+            t_port_s = f":{rule.dst_translated_port}" if rule.dst_translated_port else ""
+            dst_str  = ', '.join(dsts)
+            real_str = ', '.join(t_addrs) + t_port_s
+            print(f"  {c('DNAT  <--:', _C.CYAN):<20} "
+                  f"{c(dst_str, _C.BLUE)} --> {c(real_str, _C.WHITE)}")
+
+        if rule.description:
+            print(f"  {c('Описание:', _C.DIM):<20} {c(rule.description, _C.DIM)}")
+
+        # ── Ассоциированные правила безопасности ─────────────────────────────
+        assoc = assoc_map.get(rule.uid)
+        if assoc is not None:
+            _print_assoc_sec_rules(assoc)
+
+    print()
+    print(SEP)
+    print()
+
+
+def _print_assoc_sec_rules(assoc: NatAssociation) -> None:
+    """Вывод ассоциированных правил безопасности под NAT правилом."""
+    matches = assoc.matches
+    if not matches:
+        print(f"  {c('Sec rules:', _C.DIM):<20} {c('нет совпадений', _C.YELLOW)}")
+        return
+
+    label = c(f"Sec rules ({len(matches)}):", _C.DIM)
+    print(f"  {label}")
+    for m in matches:
+        r = m.rule
+        action_color = _C.GREEN if r.action == "allow" else _C.RED
+        action_str   = c(r.action.upper(), action_color)
+        prec_str     = c(r.precedence, _C.DIM)
+
+        if m.has_conflict:
+            dims    = "+".join(m.conflict_dims)
+            warn_lbl = c(f"[!narrower:{dims}]", _C.YELLOW, _C.BOLD)
+        elif m.full_coverage:
+            warn_lbl = c("[full]", _C.GREEN)
+        else:
+            warn_lbl = c("[partial]", _C.DIM)
+
+        print(f"    {action_str}  {c(r.name, _C.WHITE)}  #{r.position_in_precedence} {prec_str}  {warn_lbl}")
