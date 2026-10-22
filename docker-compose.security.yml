@@ -4,4 +4,4 @@ services:
     working_dir: /src
     volumes:
       - .:/src:ro
-    command: ["sh", "-c", "pip install --no-cache-dir --quiet bandit && bandit -r . -f screen -x ./.claude,./.git,./node_modules,./data,./.venv"]
+    command: ["sh", "-c", "pip install --no-cache-dir --quiet bandit && bandit -r . -f screen -x ./.git,./node_modules,./data,./.venv"]
