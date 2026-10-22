@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ngfw-matcher"
-version = "2.4.0"
+version = "2.5.0"
 requires-python = ">=3.11"
 dependencies = ["requests"]
 
@@ -19,7 +19,6 @@ web = [
 ]
 
 [project.scripts]
-ngfw-matcher = "ngfw_matcher.cli.main:main"
 ngfw-matcher-web = "ngfw_matcher.web.main:serve"
 
 [tool.setuptools.packages.find]

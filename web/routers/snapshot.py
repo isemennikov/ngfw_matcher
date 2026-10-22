@@ -7,7 +7,7 @@ from fastapi import APIRouter, Request, UploadFile, File
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from ..deps import base_ctx
+from ..deps import base_ctx, safe_json_name, resolve_under, read_upload_limited
 
 router = APIRouter()
 templates: Jinja2Templates = None
@@ -28,14 +28,22 @@ async def snapshot_page(request: Request):
 
 @router.post("/snapshot/upload", response_class=HTMLResponse)
 async def upload_snapshot(request: Request, file: UploadFile = File(...)):
-    if not file.filename.endswith(".json"):
+    name = safe_json_name(file.filename)
+    if name is None:
         ctx = base_ctx(request)
         ctx.update({"snaps": _list_snapshots(), "error": "Только .json файлы",
                     "active": request.session.get("offline_snap"),
                     "active_name": request.session.get("offline_snap_name")})
         return templates.TemplateResponse(request, "snapshot.html", ctx)
 
-    data = await file.read()
+    try:
+        data = await read_upload_limited(file)
+    except ValueError as e:
+        ctx = base_ctx(request)
+        ctx.update({"snaps": _list_snapshots(), "error": str(e),
+                    "active": request.session.get("offline_snap"),
+                    "active_name": request.session.get("offline_snap_name")})
+        return templates.TemplateResponse(request, "snapshot.html", ctx)
 
     # Базовая проверка что это снапшот ngfw-matcher
     try:
@@ -50,21 +58,24 @@ async def upload_snapshot(request: Request, file: UploadFile = File(...)):
                     "active_name": request.session.get("offline_snap_name")})
         return templates.TemplateResponse(request, "snapshot.html", ctx)
 
-    dest = UPLOAD_DIR / file.filename
+    dest = resolve_under(UPLOAD_DIR, name)
+    if dest is None:
+        return RedirectResponse("/snapshot", status_code=303)
     dest.write_bytes(data)
 
     request.session["offline_snap"]      = str(dest)
-    request.session["offline_snap_name"] = file.filename
+    request.session["offline_snap_name"] = name
 
     return RedirectResponse("/snapshot", status_code=303)
 
 
 @router.post("/snapshot/select/{filename}")
 async def select_snapshot(filename: str, request: Request):
-    dest = UPLOAD_DIR / filename
-    if dest.exists():
+    name = safe_json_name(filename)
+    dest = resolve_under(UPLOAD_DIR, name) if name else None
+    if dest is not None and dest.exists():
         request.session["offline_snap"]      = str(dest)
-        request.session["offline_snap_name"] = filename
+        request.session["offline_snap_name"] = name
     return RedirectResponse("/snapshot", status_code=303)
 
 

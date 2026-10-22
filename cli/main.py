@@ -1,5 +1,5 @@
 """
-ngfw-matcher — CLI для симуляции трафика через политию PT NGFW.
+ngfw-matcherer — CLI для симуляции трафика через политию PT NGFW.
 
 Два источника данных (выбираются флагом --source):
     ngfw    [приоритет] — прямой PT NGFW API (актуальные данные)
@@ -25,7 +25,7 @@ from .commands import run, cmd_test_connection, cmd_find_rule, cmd_check_shadowe
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        prog="ngfw-matcher",
+        prog="ngfw-matcherer",
         description="Симулятор трафика для PT NGFW — находит совпадающее правило и выявляет дубли.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -70,7 +70,7 @@ def build_parser() -> argparse.ArgumentParser:
     m.add_argument("--verbose", "-v", action="store_true")
     m.add_argument("--save-rules",   metavar="FILE.json", help="Сохранить правила в JSON")
     m.add_argument("--save-objects", metavar="FILE.json", help="Сохранить объекты в JSON")
-    m.add_argument("--snapshot",     metavar="FILE.json", help="Снапшот ngfw-matcher (офлайн)")
+    m.add_argument("--snapshot",     metavar="FILE.json", help="Снапшот ngfw-matcherer (офлайн)")
     m.add_argument("--rules-file",   metavar="FILE.json", help="Правила из локального JSON")
     m.add_argument("--objects-file", metavar="FILE.json", help="Объекты из локального JSON")
 
@@ -81,7 +81,7 @@ def build_parser() -> argparse.ArgumentParser:
     fr.add_argument("--source", choices=["ngfw", "backend"], default="ngfw")
     fr.add_argument("--backend-host", metavar="URL")
     fr.add_argument("--device", metavar="DEVICE_GROUP_ID")
-    fr.add_argument("--snapshot",     metavar="FILE.json", help="Снапшот ngfw-matcher (офлайн)")
+    fr.add_argument("--snapshot",     metavar="FILE.json", help="Снапшот ngfw-matcherer (офлайн)")
     fr.add_argument("--rules-file",   metavar="FILE.json")
     fr.add_argument("--objects-file", metavar="FILE.json")
     fr.add_argument("--output", metavar="FILE.json", help="Экспорт найденных правил в JSON")
@@ -91,7 +91,7 @@ def build_parser() -> argparse.ArgumentParser:
     cs.add_argument("--source", choices=["ngfw", "backend"], default="ngfw")
     cs.add_argument("--backend-host", metavar="URL")
     cs.add_argument("--device", metavar="DEVICE_GROUP_ID")
-    cs.add_argument("--snapshot",     metavar="FILE.json", help="Снапшот ngfw-matcher (офлайн)")
+    cs.add_argument("--snapshot",     metavar="FILE.json", help="Снапшот ngfw-matcherer (офлайн)")
     cs.add_argument("--rules-file",   metavar="FILE.json")
     cs.add_argument("--objects-file", metavar="FILE.json")
     cs.add_argument("--output", metavar="FILE.json", help="Экспорт результатов в JSON")
@@ -128,7 +128,7 @@ def build_parser() -> argparse.ArgumentParser:
     fv.add_argument("--source", choices=["ngfw", "backend"], default="ngfw")
     fv.add_argument("--backend-host", metavar="URL")
     fv.add_argument("--device", metavar="DEVICE_GROUP_ID")
-    fv.add_argument("--snapshot", metavar="FILE.json", help="Снапшот ngfw-matcher (офлайн)")
+    fv.add_argument("--snapshot", metavar="FILE.json", help="Снапшот ngfw-matcherer (офлайн)")
 
     # ── nat-audit ──────────────────────────────────────────────────────────────
     na = sub.add_parser("nat-audit",
@@ -136,7 +136,7 @@ def build_parser() -> argparse.ArgumentParser:
     na.add_argument("--source", choices=["ngfw", "backend"], default="ngfw")
     na.add_argument("--backend-host", metavar="URL")
     na.add_argument("--device", metavar="DEVICE_GROUP_ID")
-    na.add_argument("--snapshot", metavar="FILE.json", help="Снапшот ngfw-matcher (офлайн)")
+    na.add_argument("--snapshot", metavar="FILE.json", help="Снапшот ngfw-matcherer (офлайн)")
     na.add_argument("--type", dest="nat_type", choices=["snat", "dnat", "all"], default="all",
                     help="Фильтр по типу: snat | dnat | all (по умолчанию: all)")
     na.add_argument("--json", metavar="FILE|-",

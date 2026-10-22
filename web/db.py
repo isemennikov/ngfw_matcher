@@ -11,7 +11,7 @@ DB_PATH = Path(__file__).parent.parent / "data" / "ngfw_matcher.db"
 
 @contextmanager
 def _conn():
-    con = sqlite3.connect(DB_PATH)
+    con = sqlite3.connect(DB_PATH, timeout=30)
     con.row_factory = sqlite3.Row
     try:
         yield con
@@ -23,6 +23,9 @@ def _conn():
 def init_db():
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     with _conn() as con:
+        con.execute("PRAGMA journal_mode=WAL")
+        con.execute("PRAGMA busy_timeout=30000")
+        con.execute("PRAGMA synchronous=NORMAL")
         con.executescript("""
         CREATE TABLE IF NOT EXISTS devices (
             id            TEXT PRIMARY KEY,
@@ -47,13 +50,20 @@ def init_db():
             name       TEXT,
             hits       INTEGER DEFAULT 0,
             enabled    INTEGER DEFAULT 1,
+            created_at TEXT,
+            updated_at TEXT,
             synced_at  TEXT,
             PRIMARY KEY (device_id, rule_id)
         );
+        CREATE INDEX IF NOT EXISTS idx_devices_host ON devices(host);
+        CREATE INDEX IF NOT EXISTS idx_sync_jobs_device ON sync_jobs(device_id, started_at);
+        CREATE INDEX IF NOT EXISTS idx_rule_hits_device ON rule_hits(device_id);
         """)
         # Миграции — добавляем колонки если их нет (ALTER TABLE игнорирует ошибку)
         for migration in (
             "ALTER TABLE devices ADD COLUMN host TEXT",
+            "ALTER TABLE rule_hits ADD COLUMN created_at TEXT",
+            "ALTER TABLE rule_hits ADD COLUMN updated_at TEXT",
         ):
             try:
                 con.execute(migration)
@@ -109,23 +119,21 @@ def save_rule_hits(device_id: str, rows: list[dict], synced_at: str):
     with _conn() as con:
         con.execute("DELETE FROM rule_hits WHERE device_id=?", (device_id,))
         con.executemany("""
-            INSERT INTO rule_hits (device_id, rule_id, name, hits, enabled, synced_at)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO rule_hits (device_id, rule_id, name, hits, enabled, created_at, updated_at, synced_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """, [
             (device_id, r["rule_id"], r["name"], r["hits"],
-             1 if r["enabled"] else 0, synced_at)
+             1 if r["enabled"] else 0, r.get("created_at"), r.get("updated_at"), synced_at)
             for r in rows
         ])
 
 
 def get_rule_hits(device_id: str, order_by_hits: bool = False) -> list[dict]:
+    cols = "rule_id, name, hits, enabled, created_at, updated_at, synced_at"
+    sql = (f"SELECT {cols} FROM rule_hits WHERE device_id=? ORDER BY hits DESC") if order_by_hits else (
+           f"SELECT {cols} FROM rule_hits WHERE device_id=? ORDER BY rowid ASC")
     with _conn() as con:
-        order = "hits DESC" if order_by_hits else "rowid ASC"
-        rows = con.execute(f"""
-            SELECT rule_id, name, hits, enabled, synced_at
-            FROM rule_hits WHERE device_id=?
-            ORDER BY {order}
-        """, (device_id,)).fetchall()
+        rows = con.execute(sql, (device_id,)).fetchall()
         return [dict(r) for r in rows]
 
 
@@ -147,9 +155,10 @@ def clear_devices_for_host(host: str):
         ]
         if device_ids:
             placeholders = ",".join("?" * len(device_ids))
-            con.execute(f"DELETE FROM sync_jobs WHERE device_id IN ({placeholders})",
+            # placeholders is a fixed string of '?' (no user data); params are bound
+            con.execute("DELETE FROM sync_jobs WHERE device_id IN (" + placeholders + ")",
                         device_ids)
-            con.execute(f"DELETE FROM rule_hits WHERE device_id IN ({placeholders})",
+            con.execute("DELETE FROM rule_hits WHERE device_id IN (" + placeholders + ")",
                         device_ids)
         con.execute("DELETE FROM sync_jobs WHERE device_id=?", (host,))
         con.execute("DELETE FROM devices WHERE host=?", (host,))

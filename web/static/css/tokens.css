@@ -1,0 +1,169 @@
+/* ============================================================
+   Design Tokens — ngfw-matcher
+   Palette: graphite + white + red (deny/alarm) + green (allow)
+   Themes: light (:root) / dark ([data-theme="dark"])
+   ============================================================ */
+
+:root {
+  /* ── Primitive: graphite neutrals ───────────────────────── */
+  --g50:#F4F5F7; --g100:#E4E6EA; --g200:#C9CDD3; --g300:#A2A8B1;
+  --g400:#757C86; --g500:#545A63; --g600:#3A3F46; --g700:#2B2F35;
+  --g800:#1E2126; --g900:#15171A; --g950:#0B0D0F;
+
+  /* ── Primitive: red (primary accent + deny/alarm) ───────── */
+  --red500:#E4002B; --red600:#C81E2B; --red700:#A31420;
+  --red100:#FBDDE0; --red50:#FEF0F1;
+
+  /* ── Primitive: green (allow/success) ───────────────────── */
+  --green500:#22A55A; --green600:#1F8A4C; --green700:#146C43;
+  --green100:#D9F2E4; --green50:#EEF9F3;
+
+  /* ── Primitive: amber (conflict/warning) ────────────────── */
+  --amber500:#B45309; --amber100:#FDE9C8; --amber50:#FEF7EC;
+
+  /* ── Semantic: surfaces & text (light) ──────────────────── */
+  --bg:var(--g50);
+  --surface:#FFFFFF;
+  --surface-2:var(--g50);
+  --surface-muted:var(--g100);
+  --border:var(--g200);
+  --border-subtle:var(--g100);
+  --text:var(--g800);
+  --text-secondary:var(--g600);
+  --text-muted:var(--g500);
+  --text-subtle:var(--g400);
+
+  --primary:var(--g800);
+  --primary-hover:var(--g700);
+  --on-primary:#FFFFFF;
+
+  --allow:var(--green600); --allow-bg:var(--green50); --allow-border:var(--green100);
+  --deny:var(--red600);    --deny-bg:var(--red50);    --deny-border:var(--red100);
+  --warn:var(--amber500);  --warn-bg:var(--amber50);  --warn-border:var(--amber100);
+  --focus:var(--red500);
+
+  /* ── Semantic: sidebar (light) ──────────────────────────── */
+  --sidebar-bg:#FFFFFF;
+  --sidebar-text:var(--g500);
+  --sidebar-border:var(--g200);
+  --sidebar-title:var(--g400);
+  --sidebar-brand-text:var(--g900);
+  --sidebar-hover-bg:var(--g100);
+  --sidebar-hover-text:var(--g800);
+  --sidebar-active-bg:var(--g100);
+  --sidebar-active-text:var(--g950);
+  --sidebar-scroll:var(--g300);
+
+  /* ── Semantic: login ────────────────────────────────────── */
+  --login-bg:var(--g100);
+  --login-glow:rgba(228,0,43,.10);
+  --login-shine:rgba(255,255,255,.85);
+
+  /* ── Effects ────────────────────────────────────────────── */
+  --shadow:0 1px 2px rgba(16,18,20,.06), 0 1px 3px rgba(16,18,20,.05);
+  --shadow-lg:0 10px 30px rgba(16,18,20,.12);
+
+  /* ── Component tokens ───────────────────────────────────── */
+  --btn-primary-bg:var(--primary);
+  --btn-primary-hover:var(--primary-hover);
+  --btn-primary-text:var(--on-primary);
+  --card-bg:var(--surface);
+  --card-border:var(--border);
+  --card-radius:0.75rem;
+  --input-bg:var(--surface);
+  --input-border:var(--border);
+  --input-text:var(--text);
+  --input-placeholder:var(--text-subtle);
+  --input-focus-border:var(--text-muted);
+
+  --connector:var(--border);
+  --thread-dot-allow:var(--allow);
+  --thread-dot-deny:var(--deny);
+  --thread-dot-disabled:var(--text-subtle);
+  --thread-dot-conflict:var(--warn);
+  --gitgraph-line:var(--border);
+
+  /* ── Backward-compatible aliases (legacy names) ─────────── */
+  --color-primary:var(--primary);
+  --color-primary-hover:var(--primary-hover);
+  --color-primary-dark:var(--g900);
+  --color-focus-ring:var(--focus);
+  --color-allow:var(--allow);
+  --color-allow-light:var(--green500);
+  --color-allow-bg:var(--allow-bg);
+  --color-allow-text:var(--green700);
+  --color-allow-border:var(--allow-border);
+  --color-deny:var(--deny);
+  --color-deny-light:var(--red500);
+  --color-deny-bg:var(--deny-bg);
+  --color-deny-text:var(--red700);
+  --color-deny-border:var(--deny-border);
+  --color-warning:var(--warn);
+  --color-warning-bg:var(--warn-bg);
+  --color-warning-text:var(--warn);
+  --color-warning-border:var(--warn-border);
+  --color-disabled:var(--text-subtle);
+  --color-conflict:var(--warn);
+  --color-surface:var(--bg);
+  --color-surface-card:var(--surface);
+  --color-surface-elevated:var(--surface);
+  --color-surface-muted:var(--surface-muted);
+  --color-text:var(--text);
+  --color-text-secondary:var(--text-secondary);
+  --color-text-muted:var(--text-muted);
+  --color-text-subtle:var(--text-subtle);
+  --color-text-faint:var(--text-subtle);
+  --color-border:var(--border);
+  --color-border-subtle:var(--border-subtle);
+  --color-border-strong:var(--g300);
+  --color-connector:var(--border);
+  --color-scrollbar-thumb:var(--g300);
+  --color-scrollbar-track:transparent;
+  --color-sidebar-bg:var(--sidebar-bg);
+  --color-sidebar-text:var(--sidebar-text);
+  --color-sidebar-active:var(--sidebar-active-bg);
+}
+
+[data-theme="dark"] {
+  --bg:var(--g950);
+  --surface:var(--g900);
+  --surface-2:var(--g800);
+  --surface-muted:var(--g800);
+  --border:var(--g700);
+  --border-subtle:var(--g800);
+  --text:var(--g100);
+  --text-secondary:var(--g200);
+  --text-muted:var(--g400);
+  --text-subtle:var(--g500);
+
+  --primary:var(--g100);
+  --primary-hover:#FFFFFF;
+  --on-primary:var(--g900);
+
+  --allow:var(--green500); --allow-bg:rgba(34,165,90,.14);  --allow-border:rgba(34,165,90,.38);
+  --deny:var(--red500);    --deny-bg:rgba(228,0,43,.16);    --deny-border:rgba(228,0,43,.42);
+  --warn:#E0913A;          --warn-bg:rgba(224,145,58,.14);  --warn-border:rgba(224,145,58,.40);
+
+  --sidebar-bg:#08090B;
+  --sidebar-text:var(--g400);
+  --sidebar-border:#ffffff14;
+  --sidebar-title:var(--g500);
+  --sidebar-brand-text:#FFFFFF;
+  --sidebar-hover-bg:#ffffff0d;
+  --sidebar-hover-text:#f1f5f9;
+  --sidebar-active-bg:var(--g800);
+  --sidebar-active-text:#FFFFFF;
+  --sidebar-scroll:var(--g700);
+
+  --login-bg:var(--g950);
+  --login-glow:rgba(228,0,43,.22);
+  --login-shine:rgba(255,255,255,.05);
+
+  --shadow:0 1px 2px rgba(0,0,0,.45);
+  --shadow-lg:0 16px 40px rgba(0,0,0,.5);
+
+  /* legacy aliases re-resolve automatically through the vars above */
+  --color-allow-text:var(--green500);
+  --color-deny-text:var(--red500);
+  --color-scrollbar-thumb:var(--g700);
+}

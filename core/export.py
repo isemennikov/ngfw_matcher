@@ -199,6 +199,8 @@ def serialize_rule(rule, fetch_net, fetch_svc, filter_src: str | None = None) ->
         "enabled":     rule.enabled,
         "precedence":  rule.precedence,
         "position":    rule.position_in_precedence or (rule.index + 1),
+        "created_at":  rule.created_at,
+        "updated_at":  rule.updated_at,
         "source":      source,
         "destination": serialize_net_field(rule.destination_addr, fetch_net),
         "service":     serialize_svc_field(rule.service, fetch_svc),
@@ -370,3 +372,27 @@ def build_fullview_dict(
     else:
         output = {"query": query, "flows": flows_out}
     return {"_ngfw_matcher": json_meta(), **output}
+
+
+def build_where_is_use_audit_dict(entries: list[dict], query: dict, summary: dict | None = None) -> dict:
+    """entries — вывод core.where_is_use.audit_non_global();
+    summary — вывод core.where_is_use.build_audit_summary()."""
+    out = {
+        "_ngfw_matcher": json_meta(),
+        "query":       query,
+        "total":       len(entries),
+        "rules":       entries,
+    }
+    if summary is not None:
+        out["summary"] = summary
+    return out
+
+
+def build_where_is_use_search_dict(result: dict) -> dict:
+    """result — вывод core.where_is_use.find_object()."""
+    return {
+        "_ngfw_matcher": json_meta(),
+        "query":       result.get("query", ""),
+        "total":       len(result.get("matches") or []),
+        "matches":     result.get("matches") or [],
+    }

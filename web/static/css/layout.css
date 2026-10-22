@@ -1,0 +1,193 @@
+/* ============================================================
+   Layout primitives — ngfw-matcher
+   Extracted from inline <style> blocks; uses design tokens.
+   Requires tokens.css to be loaded first.
+   ============================================================ */
+
+/* ── Base ─────────────────────────────────────────────── */
+body {
+  background: var(--bg);
+  color: var(--text);
+}
+
+[x-cloak] { display: none !important; }
+
+.htmx-indicator { display: none; }
+.htmx-request .htmx-indicator { display: inline-flex; }
+.htmx-request.htmx-indicator  { display: inline-flex; }
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ── Skip link ────────────────────────────────────────── */
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 100;
+  padding: 8px 16px;
+  background: var(--g950);
+  color: #fff;
+  border-radius: 0 0 6px 0;
+}
+.skip-link:focus { left: 0; }
+
+/* ── Scrollbars ───────────────────────────────────────── */
+* { scrollbar-width: thin; scrollbar-color: var(--sidebar-scroll) transparent; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb {
+  background: var(--g300);
+  border-radius: 8px;
+  border: 2px solid var(--bg);
+}
+[data-theme="dark"] ::-webkit-scrollbar-thumb { background: var(--g700); }
+
+/* ── Thread lines (shadow rules / match chain) ────────── */
+.thread-root::before {
+  content: '';
+  display: inline-block;
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  margin-right: 8px;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+.thread-allow::before    { background: var(--allow); }
+.thread-deny::before     { background: var(--deny); }
+.thread-disabled::before { background: var(--text-subtle); }
+
+.thread-branch { position: relative; padding-left: 32px; }
+.thread-branch::before {
+  content: '';
+  position: absolute;
+  left: 9px; top: 0; bottom: 50%;
+  border-left: 2px solid var(--border);
+}
+.thread-branch::after {
+  content: '';
+  position: absolute;
+  left: 9px; top: 50%;
+  width: 16px;
+  border-top: 2px solid var(--border);
+}
+.thread-branch-last::before { bottom: 50%; }
+.thread-branch-cont::before { bottom: 0; }
+
+.thread-dot {
+  display: inline-block;
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  margin-right: 8px;
+  flex-shrink: 0;
+}
+.dot-allow    { background: var(--allow); }
+.dot-deny     { background: var(--deny); }
+.dot-disabled { background: var(--text-subtle); }
+.dot-conflict { background: var(--warn); }
+
+/* ── Device tree guide lines (sidebar) ────────────────── */
+.tree-guide {
+  position: relative;
+  width: 14px;
+  align-self: stretch;
+  flex-shrink: 0;
+}
+.tree-guide::before {
+  content: '';
+  position: absolute;
+  left: 6px;
+  top: 0;
+  bottom: 0;
+  border-left: 1.5px solid var(--sidebar-border);
+}
+.tree-guide-stop::before { display: none; }
+
+.tree-elbow {
+  position: relative;
+  width: 12px;
+  align-self: stretch;
+  flex-shrink: 0;
+}
+/* horizontal branch into the node */
+.tree-elbow::after {
+  content: '';
+  position: absolute;
+  left: 6px;
+  top: 50%;
+  width: 9px;
+  border-top: 1.5px solid var(--sidebar-border);
+}
+/* vertical continuation down to the next sibling */
+.tree-elbow::before {
+  content: '';
+  position: absolute;
+  left: 6px;
+  top: 0;
+  bottom: 0;
+  border-left: 1.5px solid var(--sidebar-border);
+}
+/* last child: vertical stops at the branch */
+.tree-elbow-last::before {
+  bottom: 50%;
+}
+
+/* ── Login screen ─────────────────────────────────────── */
+.login-body {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  background:
+    radial-gradient(800px 400px at 15% -10%, var(--login-shine), transparent),
+    radial-gradient(600px 300px at 110% 120%, var(--login-glow), transparent),
+    var(--login-bg);
+  color: var(--text);
+}
+.login-card {
+  width: 100%;
+  max-width: 390px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: var(--shadow-lg);
+  padding: 30px;
+  position: relative;
+}
+.login-theme { position: fixed; top: 20px; right: 20px; }
+
+/* ── Rule date badges (createdAt / updatedAt) ─────────── */
+.rule-stamps {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+.stamp {
+  display: inline-flex;
+  align-items: center;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.6;
+  padding: 0 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-muted);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.stamp.created { background: var(--surface-muted); border-color: var(--border); color: var(--text-muted); }
+.stamp.updated { background: var(--warn-bg); border-color: var(--warn-border); color: var(--warn); }
+.stamp.never   { background: transparent; border-style: dashed; color: var(--text-subtle); }
+.stamp.recent  { background: var(--warn-bg); border-color: var(--warn-border); color: var(--warn); position: relative; }
+.stamp.recent::after {
+  content: '';
+  position: absolute;
+  top: -1px; right: -1px;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--warn);
+  border: 2px solid var(--surface);
+}

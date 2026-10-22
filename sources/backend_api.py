@@ -71,7 +71,7 @@ class NGFWBackendSource:
         req  = urllib.request.Request(url, data=data, headers=headers, method=method)
 
         try:
-            with urllib.request.urlopen(req, context=self._ssl_ctx, timeout=30) as resp:
+            with urllib.request.urlopen(req, context=self._ssl_ctx, timeout=30) as resp:  # nosec B310 (fixed https base_url from connect)
                 # Сохраняем session cookie если есть
                 cookie = resp.headers.get("Set-Cookie")
                 if cookie:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ipaddress
 import re
 
 from fastapi import APIRouter, Form, Request
@@ -31,6 +32,8 @@ async def do_fullview(
     dport:   str = Form(""),
     proto:   str = Form("any"),
     overlap: str = Form(""),
+    exclude_src: str = Form(""),
+    exclude_dst: str = Form(""),
 ):
     strict = not bool(overlap)
     try:
@@ -43,6 +46,10 @@ async def do_fullview(
 
     if not src and not dst:
         return _error(request, "Укажите Source и/или Destination")
+
+    ex_src   = _parse_exclude(exclude_src)
+    ex_dst   = _parse_exclude(exclude_dst)
+    resolver = matcher.resolver
 
     fetch_net = matcher.resolver._fetch_net_group
 
@@ -69,15 +76,22 @@ async def do_fullview(
         return out or ["ANY"]
 
     scan_results = _run_scan(matcher, src, dst, strict, dport=dport.strip(), proto=proto.strip())
-    entries = []
+    entries  = []
+    excluded = 0
     for entry in scan_results:
+        kept = []
+        for r in entry["rules"]:
+            if _rule_excluded(r, ex_src, ex_dst, resolver):
+                excluded += 1
+            else:
+                kept.append(r)
         entries.append({
             "mode":  entry["mode"],
             "addr":  entry["addr"],
             "rules": [{"rule": r,
                         "src": _nets(r.source_addr),
                         "dst": _nets(r.destination_addr),
-                        "svc": _svcs(r.service)} for r in entry["rules"]],
+                        "svc": _svcs(r.service)} for r in kept],
         })
 
     total = sum(len(e["rules"]) for e in entries)
@@ -85,6 +99,9 @@ async def do_fullview(
     return templates.TemplateResponse(request, "partials/fullview_result.html", {
         "entries":      entries,
         "total":        total,
+        "excluded":     excluded,
+        "exclude_src":  exclude_src.strip(),
+        "exclude_dst":  exclude_dst.strip(),
         "overlap_mode": not strict,
         "n_rules":      len(matcher.rules),
     })
@@ -98,6 +115,8 @@ async def export_fullview(
     dport:   str = Form(""),
     proto:   str = Form("any"),
     overlap: str = Form(""),
+    exclude_src: str = Form(""),
+    exclude_dst: str = Form(""),
 ):
     strict = not bool(overlap)
     try:
@@ -110,12 +129,21 @@ async def export_fullview(
     if not src and not dst:
         return Response(content="Укажите Source и/или Destination", status_code=400)
 
+    ex_src   = _parse_exclude(exclude_src)
+    ex_dst   = _parse_exclude(exclude_dst)
+    resolver = matcher.resolver
+
     flow_results = _run_scan(matcher, src, dst, strict, dport=dport.strip(), proto=proto.strip())
+    for entry in flow_results:
+        entry["rules"] = [r for r in entry["rules"]
+                          if not _rule_excluded(r, ex_src, ex_dst, resolver)]
 
     fetch_net = matcher.resolver._fetch_net_group
     fetch_svc = matcher.resolver._fetch_svc_group
     query = {"src": src or "any", "dst": dst or "any",
-             "dport": dport or "any", "proto": proto or "any", "overlap": not strict}
+             "dport": dport or "any", "proto": proto or "any", "overlap": not strict,
+             "exclude_src": exclude_src.strip() or None,
+             "exclude_dst": exclude_dst.strip() or None}
     return json_download(build_fullview_dict(flow_results, query, fetch_net, fetch_svc), "fullview")
 
 
@@ -152,6 +180,46 @@ def _run_scan(matcher, src: str, dst: str, strict: bool,
 
 def _error(request, msg: str):
     return templates.TemplateResponse(request, "partials/error.html", {"request": request, "error": msg})
+
+
+def _parse_exclude(raw: str) -> list:
+    """'10.0.0.0/8, 10.31.64.5' → список ip_network (хост → /32)."""
+    nets = []
+    for tok in re.split(r"[,\s]+", raw.strip()):
+        if not tok:
+            continue
+        try:
+            nets.append(ipaddress.ip_network(tok, strict=False))
+        except ValueError:
+            continue
+    return nets
+
+
+def _net_within_any(nets: list, ref_nets: list) -> bool:
+    """True если хотя бы одна сеть из nets целиком лежит внутри одной из ref_nets."""
+    for n in nets:
+        for ref in ref_nets:
+            if n.version != ref.version:
+                continue
+            try:
+                if n.subnet_of(ref):
+                    return True
+            except (TypeError, AttributeError):
+                pass
+    return False
+
+
+def _rule_excluded(rule, ex_src: list, ex_dst: list, resolver) -> bool:
+    """True если sourceAddr правила лежит внутри ex_src или destinationAddr — внутри ex_dst."""
+    if ex_src:
+        src_nets = resolver.resolve_field_network(rule.source_addr)
+        if _net_within_any(src_nets, ex_src):
+            return True
+    if ex_dst:
+        dst_nets = resolver.resolve_field_network(rule.destination_addr)
+        if _net_within_any(dst_nets, ex_dst):
+            return True
+    return False
 
 
 def _obj_to_strs(obj: dict, fetch_net, depth=0) -> list[str]:

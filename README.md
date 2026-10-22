@@ -1,221 +1,118 @@
 # ngfw-matcher
 
-Инструмент анализа праивил на PT NGFW 
+Веб-приложение для симуляции трафика и анализа политики **PT NGFW**
+(Positive Technologies Next-Generation Firewall). Работает **онлайн** (через API
+СУ) или **офлайн** (из JSON-снапшотов). Никакой бизнес-логики в браузере —
+весь расчёт локальный, в СУ отправляются только запросы на чтение.
+
+> **Внимание:** рекомендуется подключаться RO-учётной записью (роль **Operator**).
 
 ---
 
-## Требования
+## Разделы
 
-- **Docker** и **Docker Compose** — для запуска приложения в контейнере
-- **Python 3.11+** — для локального запуска CLI (без Docker)
+| Раздел | Назначение |
+|---|---|
+| **Match** | Симуляция трафика (`src → dst:port/proto`) по first-match: сработавшее правило, действие и список теневых правил |
+| **Find Rule** | Поиск правил по подстроке имени или UUID, с фильтром по порту/протоколу |
+| **WhereIsUse** | Где используется объект: «вне Global» (аудит владения) и «поиск объекта» по UUID/имени |
+| **Shadows** | Поиск теневых (перекрытых) правил, полный и частичный режимы |
+| **NAT Audit** | NAT-правила (SNAT/DNAT), направление и адреса трансляции, связь с правилами безопасности и покрытие |
+| **Fullview** | Все правила, где адрес покрывается полем `sourceAddr` / `destinationAddr` (+ исключения) |
+| **Rule Hits** | Счётчики срабатываний правил, сортировка, метки создания/изменения |
+| **Snapshot** | Загрузка/выбор офлайн-снапшота, режим без подключения к СУ |
+
+Результаты каждого раздела (**кроме** служебных) экспортируются в JSON с
+раскрытыми объектами (адреса, сервисы).
 
 ---
 
 ## Запуск
 
-### Через Docker Compose (рекомендуется)
+### Docker (рекомендуется)
 
-**Запуск приложения:**
+При первом запуске создайте `.env` из шаблона и сгенерируйте ключ подписи
+cookie сессии:
 
 ```bash
-docker-compose up -d
+cp .env.example .env
+
+# сгенерировать ключ и подставить его в NGFW_SECRET_KEY в .env
+python -c "import secrets; print(secrets.token_urlsafe(48))"
 ```
 
-Веб-интерфейс будет доступен по адресу **http://localhost:8080** 
-
-Если достпу до СУ осуществляется через ssh/teleport проброс то в **WEB** версии в окне подключения необходимо указать **https://host.docker.internal:ноемр_порта**
-
-**Просмотр логов:**
+Затем поднимите сервис:
 
 ```bash
-docker-compose logs -f web
+docker compose up -d --build
 ```
 
-**Выключение приложения:**
+UI будет доступен на `http://127.0.0.1:8080` (порт публикуется только на
+localhost).
+
+> **`NGFW_SECRET_KEY`** — HMAC-ключ для подписи session-cookie
+> (starlette `SessionMiddleware`). Обязателен в проде. Если пусто —
+> генерируется эфемерный ключ, и все сессии сбрасываются при каждом рестарте.
+
+### Локально
 
 ```bash
-docker-compose down
-```
+pip install -e ".[web]"
 
-**Удаление образа (полная очистка):**
+# при локальном запуске .env не подхватывается автоматически — экспортируем сами
+set -a; source .env; set +a
 
-```bash
-docker-compose down --rmi all
-```
-
-### Локально (без Docker)
-
-Запускать из директории **выше** папки `ngfw_matcher/`:
-
-```bash
-# Проверка подключения
-python -m ngfw_matcher --host https://10.1.31.100 --user adminro --pass secret test-connection
-
-# Симуляция трафика
-python -m ngfw_matcher --host https://10.1.31.100 --user adminro --pass secret \
-  match --src 192.168.1.10 --dst 10.0.0.5 --dport 443 --proto tcp
-
-# Офлайн (без подключения к СУ)
-python -m ngfw_matcher match --snapshot state.json \
-  --src 192.168.1.10 --dst 10.0.0.5 --dport 443 --proto tcp
+ngfw-matcher-web           # или: uvicorn ngfw_matcher.web.main:app
 ```
 
 ---
 
-## Все параметры
+## Конфигурация (`.env`)
 
-```
-Общие (до команды):
-  --host URL           Адрес СУ: https://10.1.31.100 или https://localhost:3663
-  --user LOGIN         Логин
-  --pass PWD           Пароль
-  --token TOKEN        Bearer-токен (вместо логина/пароля)
-  --verify-ssl         Проверять TLS-сертификат
-  --log-level          DEBUG | INFO | WARNING | ERROR
-
-Команды:
-  test-connection      Проверить подключение и показать Device Groups
-  match                Симулировать трафик по правилам
-  find-rule            Найти правило по имени или UUID
-  check-shadowed       Найти теневые (перекрытые) правила
-  rule-hits            Счётчики срабатываний правил
-  fullview             Все правила, затрагивающие адрес (src или dst)
-  nat-audit            Просмотр NAT правил с типом и адресами трансляции
-
-Параметры match:
-  --device ID          deviceGroupId (иначе — интерактивный выбор)
-  --snapshot FILE.json Офлайн-режим: загрузить правила из снапшота
-
-  Трафик:
-  --src IP/CIDR/any    Source: 192.168.1.10 | 10.0.0.0/8 | any
-                       Несколько через запятую: 10.0.0.1,192.168.1.0/24
-  --dst IP/CIDR/any    Destination (аналогично --src)
-  --dport PORTS        Порт(ы): 443 | 80,443 | 5000-5322 | 80,5000-5010 | any
-  --proto PROTO        tcp | udp | icmp | icmpv6 | any
-
-  Режим:
-  --overlap            Нестрогий матчинг: включает правила с подсетями запроса
-  --interactive / -i   Цикл ввода трафика без повторной авторизации
-  --batch FILE.csv     Batch из CSV (колонки: src_ip, dst_ip, dst_port, protocol)
-  --verbose / -v       Подробный вывод полей правила
-
-  Вывод:
-  --output FILE.json   Экспорт результатов в JSON (matched + shadowed)
-  --save-rules FILE    Сохранить правила в JSON
-  --rules-file FILE    Офлайн-режим (устаревший)
-  --objects-file FILE  Объекты из локального JSON
-
-Параметры find-rule:
-  PATTERN_OR_UUID      Подстрока имени (регистронезависимо) или полный UUID
-  --device ID          deviceGroupId
-  --snapshot FILE.json Офлайн-режим
-  --dport PORTS        Фильтр по порту
-  --proto PROTO        Фильтр по протоколу
-  --output FILE.json   Экспорт найденных правил в JSON с раскрытыми объектами
-
-Параметры check-shadowed:
-  --device ID          deviceGroupId
-  --snapshot FILE.json Офлайн-режим
-  --partial            Режим частичного пересечения (overlapping src/dst/svc)
-  --output FILE.json   Экспорт результатов анализа в JSON
-
-Параметры fullview:
-  --src IP/CIDR[,...]  Искать во всех правилах по sourceAddr
-  --dst IP/CIDR[,...]  Искать во всех правилах по destinationAddr
-  --dport PORTS        Дополнительный фильтр по порту
-  --proto PROTO        Дополнительный фильтр по протоколу
-  --overlap            Overlap-режим (нестрогое пересечение)
-  --device ID          deviceGroupId
-  --snapshot FILE.json Офлайн-режим
-  --output FILE.json   Экспорт всех найденных правил в JSON с раскрытыми объектами
-
-Параметры rule-hits:
-  --device ID          deviceGroupId (иначе — интерактивный выбор)
-  --rule PATTERN       Фильтр по имени (подстрока, регистронезависимо)
-  --sort-hits          Сортировать по убыванию hits
-  --batch-size N       Размер батча к API (по умолчанию: 30)
-```
+| Переменная | Назначение | По умолчанию |
+|---|---|---|
+| `NGFW_SECRET_KEY` | Ключ подписи cookie сессии (32+ случайных байт) | эфемерный |
+| `NGFW_VERIFY_SSL` | Проверять TLS-сертификат СУ (`1`/`0`) | `0` |
+| `NGFW_COOKIE_SECURE` | Ставить флаг `Secure` на cookie (`1` за TLS) | `0` |
+| `NGFW_SESSION_MAX_AGE` | Время жизни сессии, сек | `43200` |
+| `NGFW_MAX_UPLOAD_MB` | Максимальный размер загружаемого снапшота, МБ | `64` |
+| `NGFW_HOST` / `NGFW_PORT` | Bind веб-сервера | `127.0.0.1` / `8080` |
+| `NGFW_RULE_RECENT_DAYS` | Порог метки «недавно изменено» для правил, дней | `30` |
 
 ---
 
-## NAT правила
+## Подключение к СУ через tsh (SSH-проксирование)
 
-```bash
-# Все NAT правила из снапшота
-python -m ngfw_matcher nat-audit --snapshot state.json
 
-# Только SNAT
-python -m ngfw_matcher nat-audit --snapshot state.json --type snat
-
-# Только DNAT
-python -m ngfw_matcher nat-audit --snapshot state.json --type dnat
-
-# Из живого устройства
-python -m ngfw_matcher --host https://10.1.31.100 --user adminro --pass secret \
-  nat-audit --device 0197fb01-2707-79e8-95d1-70c78c6fd104
+```
+Host:  https://host.docker.internal:<tcp_port>
 ```
 
-Вывод показывает для каждого правила:
+`host.docker.internal` уже проброшен в контейнер через `extra_hosts` в
+`docker-compose.yml`.
 
-- Тип (`SNAT` / `DNAT` / `SNAT+DNAT`) и направление (`-->` / `<--` / `<-->`)
-- Условия матчинга: Src, Dst, Svc
-- Адреса трансляции: серые (private) `-->` белые (public) для SNAT, и наоборот для DNAT
-- Ассоциированные правила безопасности с индикатором покрытия (`[full]` / `[partial]` / `[!narrower:svc]`)
-
-```bash
-# Экспорт полного анализа (все NAT + ассоциированные правила безопасности) в JSON
-python -m ngfw_matcher nat-audit --snapshot state.json --json nat_audit.json
-
-# Экспорт только DNAT в stdout (для pipe / jq)
-python -m ngfw_matcher nat-audit --snapshot state.json --type dnat --json -
-```
-
-```text
-Параметры nat-audit:
-  --device ID          deviceGroupId
-  --snapshot FILE.json Офлайн-режим
-  --type snat|dnat|all Фильтр по типу NAT (по умолчанию: all)
-  --json FILE|-        Экспорт результатов в JSON (- для stdout)
-```
+При локальном (не-Docker) запуске вместо этого используйте
+`https://127.0.0.1:<tcp_port>`.
 
 ---
 
-## Экспорт результатов в JSON
+## Офлайн-снапшоты
 
-Все команды поддерживают флаг `--output FILE.json`. JSON содержит метаданные инструмента, параметры запроса и раскрытые объекты (адреса, сервисы).
+На странице **Snapshot** можно загрузить JSON-снапшот и работать без доступа к
+СУ: Match, Shadows, NAT, Fullview, WhereIsUse и Rule Hits считаются из
+локальных данных. Поддерживаются оба формата снапшотов (`multi` — всё дерево
+групп; `legacy` — одна группа).
 
-```bash
-# Экспорт результатов match
-python -m ngfw_matcher --host https://10.1.31.100 --user adminro --pass secret \
-  match --src 10.31.102.5 --dst 8.8.8.8 --dport 443 --proto tcp \
-  --output match_result.json
+---
 
-# Офлайн-режим: экспорт match из снапшота
-python -m ngfw_matcher match --snapshot state.json \
-  --src 10.31.102.5 --dst 8.8.8.8 --dport 443 --proto tcp \
-  --output match_result.json
 
-# Экспорт find-rule
-python -m ngfw_matcher find-rule --snapshot state.json NETBANK \
-  --output found_rules.json
+## Архитектура
 
-# Экспорт find-rule с фильтром по порту
-python -m ngfw_matcher find-rule --snapshot state.json BGP \
-  --dport 179 --proto tcp --output bgp_rules.json
-
-# Экспорт теневых правил
-python -m ngfw_matcher check-shadowed --snapshot state.json \
-  --output shadows.json
-
-# Экспорт теневых (режим частичного пересечения)
-python -m ngfw_matcher check-shadowed --snapshot state.json \
-  --partial --output shadows_partial.json
-
-# Экспорт fullview по src-адресу
-python -m ngfw_matcher fullview --snapshot state.json \
-  --src 10.31.102.5,10.108.102.5 --output fullview_src.json
-
-# Экспорт fullview по dst с фильтром порта
-python -m ngfw_matcher fullview --snapshot state.json \
-  --dst 8.8.8.8 --dport 443 --proto tcp --output fullview_dst.json
 ```
+web/      FastAPI + Jinja2 + HTMX, роутеры, шаблоны, SQLite (devices / hits)
+core/     доменная логика: matcher, resolver, rules (нормализация),
+          nat_audit, where_is_use, snapshot, export, format
+sources/  клиенты СУ (ngfw_api)
+```
+
+Точки входа: `ngfw-matcher-web` (или `uvicorn ngfw_matcher.web.main:app`).

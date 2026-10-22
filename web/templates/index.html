@@ -4,8 +4,8 @@
 {% block content %}
 
 {% if not devices %}
-  <div class="text-center py-20 text-slate-400">
-    <svg class="w-12 h-12 mx-auto mb-4 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+  <div class="text-center py-20 text-subtle">
+    <svg class="w-12 h-12 mx-auto mb-4 text-secondary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
         d="M5 12h14M12 5l7 7-7 7"/>
     </svg>
@@ -16,26 +16,26 @@
 
 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-w-4xl">
   {% for dev in devices %}
-  <div class="bg-white rounded-xl border border-slate-200 p-5
-    {% if dev.id == request.session.get('selected_device') %}ring-2 ring-blue-500{% endif %}">
+  <div class="bg-surface rounded-xl border border-border p-5
+    {% if dev.id == request.session.get('selected_device') %}ring-2 ring-primary{% endif %}">
     <div class="flex items-start justify-between mb-3">
       <div>
-        <div class="font-semibold text-slate-800 text-sm">{{ dev.name }}</div>
-        <div class="text-xs text-slate-400 mt-0.5 font-mono">{{ dev.id[:18] }}…</div>
+        <div class="font-semibold text-body text-sm">{{ dev.name }}</div>
+        <div class="text-xs text-subtle mt-0.5 font-mono">{{ dev.id[:18] }}…</div>
       </div>
       {% if dev.last_sync %}
-        <span class="text-xs bg-green-50 text-green-700 border border-green-200 px-2 py-0.5 rounded-full">
+        <span class="text-xs bg-allow-bg text-allow border border-allow-border px-2 py-0.5 rounded-full">
           ✓ synced
         </span>
       {% else %}
-        <span class="text-xs bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full">
+        <span class="text-xs bg-warn-bg text-warn border border-warn-border px-2 py-0.5 rounded-full">
           no sync
         </span>
       {% endif %}
     </div>
 
     {% if dev.last_sync %}
-      <div class="text-xs text-slate-500 mb-3">
+      <div class="text-xs text-muted mb-3">
         {{ dev.rules_count }} правил · {{ dev.last_sync[:16] | replace('T',' ') }}
       </div>
     {% endif %}
@@ -44,9 +44,9 @@
       <button type="submit"
         class="w-full text-xs font-medium py-1.5 rounded-lg transition-colors
           {% if dev.id == request.session.get('selected_device') %}
-            bg-blue-600 text-white hover:bg-blue-500
+            bg-primary text-primary-on hover:bg-primary-hover
           {% else %}
-            bg-slate-100 text-slate-700 hover:bg-slate-200
+            bg-surface-muted text-body hover:bg-surface-muted
           {% endif %}">
         {% if dev.id == request.session.get('selected_device') %}Выбрано{% else %}Выбрать{% endif %}
       </button>
@@ -54,13 +54,13 @@
   </div>
   {% endfor %}
 </div>
-<p class="text-xs text-slate-400 mt-3 max-w-4xl">
+<p class="text-xs text-subtle mt-3 max-w-4xl">
   Синхронизация — общая на всю СУ, кнопка «↻» рядом с «Устройства» в боковой панели.
 </p>
 
 {% if selected_dev %}
 <div class="mt-8 max-w-4xl">
-  <h2 class="text-sm font-semibold text-slate-700 mb-4">Быстрые действия</h2>
+  <h2 class="text-sm font-semibold text-body mb-4">Быстрые действия</h2>
   <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
     {% for href, label, desc in [
       ('/match',     'Match',      'Проверить трафик'),
@@ -69,10 +69,10 @@
       ('/hits',      'Rule Hits',  'Счётчики hits'),
     ] %}
     <a href="{{ href }}"
-       class="bg-white border border-slate-200 rounded-xl p-4 hover:border-blue-300
+       class="bg-surface border border-border rounded-xl p-4 hover:border-border
               hover:shadow-sm transition-all group">
-      <div class="font-semibold text-sm text-slate-800 group-hover:text-blue-600">{{ label }}</div>
-      <div class="text-xs text-slate-400 mt-1">{{ desc }}</div>
+      <div class="font-semibold text-sm text-body group-hover:text-body">{{ label }}</div>
+      <div class="text-xs text-subtle mt-1">{{ desc }}</div>
     </a>
     {% endfor %}
   </div>

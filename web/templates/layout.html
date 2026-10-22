@@ -1,92 +1,29 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="ru" data-theme="{{ theme | default('system') }}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}ngfw-matcher{% endblock %}</title>
-  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
-  <meta name="theme-color" content="#0f172a">
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg?v={{ app_version }}">
+  <meta name="theme-color" content="#F4F5F7">
   <meta name="description" content="ngfw-matcher — локальный анализ политик PT NGFW: Match, Shadows, NAT audit, Rule Hits">
-  <link rel="stylesheet" href="/static/css/tailwind.css">
-  <script src="/static/js/htmx.min.js"></script>
-  <script src="/static/js/alpinejs.min.js" defer></script>
-  <style>
-    [x-cloak] { display: none !important; }
-    .htmx-indicator { display: none; }
-    .htmx-request .htmx-indicator { display: inline-flex; }
-    .htmx-request.htmx-indicator  { display: inline-flex; }
-
-    :focus-visible {
-      outline: 2px solid #38bdf8;
-      outline-offset: 2px;
-    }
-
-    .skip-link {
-      position: absolute;
-      left: -9999px;
-      top: 0;
-      z-index: 100;
-      padding: 8px 16px;
-      background: #0f172a;
-      color: #fff;
-      border-radius: 0 0 6px 0;
-    }
-    .skip-link:focus {
-      left: 0;
-    }
-
-    /* Thread-нити для связи правил */
-    .thread-root::before {
-      content: '';
-      display: inline-block;
-      width: 10px; height: 10px;
-      border-radius: 50%;
-      margin-right: 8px;
-      vertical-align: middle;
-      flex-shrink: 0;
-    }
-    .thread-allow::before  { background: #16a34a; }
-    .thread-deny::before   { background: #dc2626; }
-    .thread-disabled::before { background: #94a3b8; }
-
-    .thread-branch {
-      position: relative;
-      padding-left: 32px;
-    }
-    .thread-branch::before {
-      content: '';
-      position: absolute;
-      left: 9px; top: 0; bottom: 50%;
-      border-left: 2px solid #cbd5e1;
-    }
-    .thread-branch::after {
-      content: '';
-      position: absolute;
-      left: 9px; top: 50%;
-      width: 16px;
-      border-top: 2px solid #cbd5e1;
-    }
-    .thread-branch-last::before {
-      bottom: 50%;
-    }
-    .thread-branch-cont::before {
-      bottom: 0;
-    }
-    .thread-dot {
-      display: inline-block;
-      width: 10px; height: 10px;
-      border-radius: 50%;
-      margin-right: 8px;
-      flex-shrink: 0;
-    }
-    .dot-allow    { background: #16a34a; }
-    .dot-deny     { background: #dc2626; }
-    .dot-disabled { background: #94a3b8; }
-    .dot-conflict { background: #d97706; }
-
-    scrollbar-width: thin;
-    scrollbar-color: #334155 #0f172a;
-  </style>
+  <script>
+    (function () {
+      try {
+        var m = document.cookie.match(/(?:^|;\s*)theme=([^;]+)/);
+        var mode = m ? decodeURIComponent(m[1]) : "system";
+        var dark = mode === "dark" || (mode === "system" &&
+          window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
+        document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
+      } catch (e) {}
+    })();
+  </script>
+  <link rel="stylesheet" href="/static/css/tokens.css?v={{ app_version }}">
+  <link rel="stylesheet" href="/static/css/tailwind.css?v={{ app_version }}">
+  <link rel="stylesheet" href="/static/css/layout.css?v={{ app_version }}">
+  <script src="/static/js/htmx.min.js?v={{ app_version }}"></script>
+  <script src="/static/js/alpinejs.min.js?v={{ app_version }}" defer></script>
+  <script src="/static/js/theme.js?v={{ app_version }}" defer></script>
   <script>
     document.addEventListener('htmx:beforeRequest', function() {
       document.getElementById('global-loading-bar').style.opacity = '1';
@@ -96,52 +33,53 @@
     });
   </script>
 </head>
-<body class="bg-slate-50 text-slate-800 flex h-screen overflow-hidden">
+<body class="flex h-screen overflow-hidden">
 
   <a href="#main-content" class="skip-link">Перейти к содержимому</a>
 
   <!-- ── Сайдбар ──────────────────────────────────────────────────────── -->
-  <aside class="w-56 bg-slate-900 text-slate-300 flex flex-col flex-shrink-0 overflow-y-auto">
+  <aside class="w-56 flex flex-col flex-shrink-0 overflow-y-auto
+                bg-[var(--sidebar-bg)] text-[var(--sidebar-text)]">
 
     <!-- Логотип -->
-    <div class="px-4 py-4 border-b border-slate-700 flex items-center gap-2">
-      <div class="w-6 h-6 bg-blue-500 rounded flex items-center justify-center text-white text-xs font-bold">N</div>
-      <span class="font-semibold text-slate-100 text-sm tracking-wide">ngfw-matcher</span>
+    <div class="px-4 py-4 border-b border-[var(--sidebar-border)] flex items-center gap-2">
+      <div class="w-6 h-6 bg-[var(--red500)] rounded flex items-center justify-center text-white text-xs font-bold">N</div>
+      <span class="font-semibold text-[var(--sidebar-brand-text)] text-sm tracking-wide">ngfw-matcher</span>
     </div>
 
     <!-- Подключение -->
-    <div class="px-4 py-3 border-b border-slate-700">
+    <div class="px-4 py-3 border-b border-[var(--sidebar-border)]">
       {% if request.session.get('host') %}
         <div class="flex items-center gap-1.5 mb-1">
-          <span class="w-1.5 h-1.5 rounded-full bg-green-400 flex-shrink-0"></span>
-          <span class="text-xs text-green-400 font-medium">Connected</span>
+          <span class="w-1.5 h-1.5 rounded-full bg-[var(--allow)] flex-shrink-0"></span>
+          <span class="text-xs text-[var(--allow)] font-medium">Connected</span>
         </div>
-        <div class="text-xs text-slate-400 truncate">{{ request.session.get('host','') | replace('https://','') }}</div>
+        <div class="text-xs text-[var(--sidebar-text)] truncate">{{ request.session.get('host','') | replace('https://','') }}</div>
         <form method="post" action="/disconnect" class="mt-2">
-          <button class="text-xs text-slate-500 hover:text-red-400 transition-colors">
+          <button class="text-xs text-[var(--sidebar-title)] hover:text-deny transition-colors">
             Отключиться
           </button>
         </form>
       {% else %}
         <div class="flex items-center gap-1.5">
-          <span class="w-1.5 h-1.5 rounded-full bg-slate-500 flex-shrink-0"></span>
-          <span class="text-xs text-slate-500">Не подключено</span>
+          <span class="w-1.5 h-1.5 rounded-full bg-[var(--text-subtle)] flex-shrink-0"></span>
+          <span class="text-xs text-[var(--sidebar-title)]">Не подключено</span>
         </div>
       {% endif %}
     </div>
 
     <!-- Устройства -->
     {% if request.session.get('host') %}
-    <div class="py-3 border-b border-slate-700">
+    <div class="py-3 border-b border-[var(--sidebar-border)]">
       <div class="flex items-center justify-between mb-2 px-4">
-        <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Устройства</span>
+        <span class="text-xs font-semibold text-[var(--sidebar-title)] uppercase tracking-wider">Устройства</span>
         <button type="button"
           hx-post="/devices/sync"
           hx-target="#sync-status"
           hx-swap="innerHTML"
           title="Синхронизировать дерево с СУ"
           aria-label="Синхронизировать дерево с СУ"
-          class="text-slate-500 hover:text-blue-400 transition-colors p-1 flex-shrink-0">
+          class="text-[var(--sidebar-title)] hover:text-[var(--red500)] transition-colors p-1 flex-shrink-0">
           <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
               d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
@@ -160,26 +98,26 @@
     {% endif %}
 
     <!-- Оффлайн-снапшот -->
-    <div class="px-3 py-3 border-b border-slate-700">
-      <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 px-1">Снапшот</div>
+    <div class="px-3 py-3 border-b border-[var(--sidebar-border)]">
+      <div class="text-xs font-semibold text-[var(--sidebar-title)] uppercase tracking-wider mb-2 px-1">Снапшот</div>
       {% if offline_snap_active %}
-        <div class="mx-1 mb-2 rounded-lg bg-indigo-900/40 border border-indigo-700/50 px-2.5 py-2">
-          <div class="flex items-center gap-1.5 text-indigo-300 text-xs font-medium">
-            <svg class="w-3 h-3 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+        <div class="mx-1 mb-2 rounded-lg bg-surface-muted border border-border px-2.5 py-2">
+          <div class="flex items-center gap-1.5 text-secondary text-xs font-medium">
+            <svg class="w-3 h-3 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
               <path d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z"/>
             </svg>
             <span class="truncate" title="{{ offline_snap_name }}">{{ offline_snap_name }}</span>
           </div>
-          <div class="text-indigo-400/60 text-xs mt-1">Оффлайн-режим активен</div>
+          <div class="text-subtle text-xs mt-1">Оффлайн-режим активен</div>
           <form method="post" action="/snapshot/clear" class="mt-1.5">
-            <button class="text-xs text-slate-500 hover:text-red-400 transition-colors">Убрать снапшот</button>
+            <button class="text-xs text-[var(--sidebar-title)] hover:text-deny transition-colors">Убрать снапшот</button>
           </form>
         </div>
       {% else %}
         <a href="/snapshot"
            class="flex items-center gap-2 px-2 py-1.5 rounded text-xs transition-colors
-             {% if request.url.path == '/snapshot' %}bg-slate-800 text-slate-100{% else %}text-slate-500 hover:bg-slate-800 hover:text-slate-300{% endif %}">
-          <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+             {% if request.url.path == '/snapshot' %}bg-[var(--sidebar-active-bg)] text-[var(--sidebar-active-text)]{% else %}text-[var(--sidebar-text)] hover:bg-[var(--sidebar-hover-bg)] hover:text-[var(--sidebar-hover-text)]{% endif %}">
+          <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
               d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
           </svg>
@@ -190,23 +128,23 @@
 
     {# Группа внутри загруженного оффлайн multi-снапшота #}
     {% if snap_groups %}
-      <div class="px-3 py-3 border-b border-slate-700">
-        <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5 px-1">Группа устройств</div>
+      <div class="px-3 py-3 border-b border-[var(--sidebar-border)]">
+        <div class="text-xs font-semibold text-[var(--sidebar-title)] uppercase tracking-wider mb-1.5 px-1">Группа устройств</div>
         <div class="space-y-0.5 max-h-48 overflow-y-auto pr-1">
           {% for g in snap_groups %}
             <form method="post" action="/devices/group/{{ g.id }}">
               <button type="submit"
                 class="w-full text-left rounded-lg px-2 py-1.5 text-xs transition-colors
                        {% if g.id == active_group_id %}
-                         bg-blue-600/30 text-blue-200 border border-blue-600/40
+                         bg-[var(--sidebar-active-bg)] text-[var(--sidebar-active-text)] border border-[var(--red500)]
                        {% else %}
-                         text-slate-400 hover:bg-slate-700/50 hover:text-slate-200
+                         text-[var(--sidebar-text)] hover:bg-[var(--sidebar-hover-bg)] hover:text-[var(--sidebar-hover-text)]
                        {% endif %}">
                 <span style="padding-left: {{ g.depth * 10 }}px">
                   {% if g.depth > 0 %}└ {% endif %}{{ g.name }}
                 </span>
                 {% if g.rules_count %}
-                  <span class="float-right text-slate-600 font-mono">{{ g.rules_count }}</span>
+                  <span class="float-right text-[var(--sidebar-title)] font-mono">{{ g.rules_count }}</span>
                 {% endif %}
               </button>
             </form>
@@ -216,17 +154,17 @@
     {% endif %}
 
     {% if request.session.get('host') or offline_snap_active %}
-      <div class="px-3 py-3 border-b border-slate-700">
+      <div class="px-3 py-3 border-b border-[var(--sidebar-border)]">
         <form method="post" action="/devices/include-parents">
-          <label class="flex items-start gap-2 text-xs text-slate-400 cursor-pointer px-1">
+          <label class="flex items-start gap-2 text-xs text-[var(--sidebar-text)] cursor-pointer px-1">
             <input type="checkbox" name="enabled" value="1"
                    {% if include_parent_groups %}checked{% endif %}
                    onchange="this.form.requestSubmit()"
-                   class="mt-0.5 rounded border-slate-600 bg-slate-800 text-blue-600
+                   class="mt-0.5 rounded border-[var(--sidebar-border)] bg-[var(--sidebar-bg)] text-[var(--red500)]
                           focus:ring-0 focus:ring-offset-0 flex-shrink-0">
             <span>
               Учитывать родительские группы
-              <span class="block text-slate-600 mt-0.5">
+              <span class="block text-[var(--sidebar-title)] mt-0.5">
                 Pre/Post-правила предков (Global и т.д.) участвуют в Match / Shadows / NAT
               </span>
             </span>
@@ -237,33 +175,45 @@
 
     <!-- Навигация -->
     <nav class="flex-1 px-3 py-3">
-      <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 px-1">Анализ</div>
-      {% set nav = [
-        ('/match',     'Match',      'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z'),
-        ('/find-rule', 'Find Rule',  'M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z'),
-        ('/shadows',   'Shadows',    'M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z'),
-        ('/hits',      'Rule Hits',  'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z'),
-        ('/fullview',  'Fullview',   'M4 6h16M4 10h16M4 14h16M4 18h16'),
-        ('/nat',       'NAT Audit',  'M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4'),
+      {% set nav_groups = [
+        ('Анализ', [
+          ('/match',       'Match',      'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z'),
+          ('/find-rule',   'Find Rule',  'M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z'),
+          ('/where-is-use','WhereIsUse', 'M17.657 16.657L13.414 20.9a2 2 0 01-2.828 0l-4.243-4.243a8 8 0 1111.314 0z M15 11a3 3 0 11-6 0 3 3 0 016 0z'),
+        ]),
+        ('Политика', [
+          ('/shadows',     'Shadows',    'M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z'),
+          ('/nat',         'NAT Audit',  'M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4'),
+          ('/fullview',    'Fullview',   'M4 6h16M4 10h16M4 14h16M4 18h16'),
+        ]),
+        ('Данные', [
+          ('/hits',        'Rule Hits',  'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z'),
+        ]),
       ] %}
-      {% for href, label, icon_d in nav %}
-        <a href="{{ href }}"
-           class="flex items-center gap-2.5 px-2 py-2 rounded text-sm mb-0.5 transition-colors
-             {% if request.url.path == href %}
-               bg-slate-800 text-slate-100
-             {% else %}
-               text-slate-400 hover:bg-slate-800 hover:text-slate-200
-             {% endif %}">
-          <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="{{ icon_d }}"/>
-          </svg>
-          <span>{{ label }}</span>
-        </a>
+      {% for group_label, items in nav_groups %}
+        <div class="mb-4">
+          <div class="text-xs font-semibold text-[var(--sidebar-title)] uppercase tracking-wider mb-2 px-1">{{ group_label }}</div>
+          {% for href, label, icon_d in items %}
+            <a href="{{ href }}"
+               {% if request.url.path == href %}aria-current="page"{% endif %}
+               class="flex items-center gap-2.5 px-2 py-2 rounded text-sm mb-0.5 transition-colors border-l-2
+                 {% if request.url.path == href %}
+                   bg-[var(--sidebar-active-bg)] text-[var(--sidebar-active-text)] border-[var(--red500)]
+                 {% else %}
+                   text-[var(--sidebar-text)] hover:bg-[var(--sidebar-hover-bg)] hover:text-[var(--sidebar-hover-text)] border-transparent
+                 {% endif %}">
+              <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="{{ icon_d }}"/>
+              </svg>
+              <span>{{ label }}</span>
+            </a>
+          {% endfor %}
+        </div>
       {% endfor %}
     </nav>
 
     <!-- Версия -->
-    <div class="px-4 py-3 border-t border-slate-700 text-xs text-slate-600">
+    <div class="px-4 py-3 border-t border-[var(--sidebar-border)] text-xs text-[var(--sidebar-title)]">
       v{{ app_version }}
     </div>
   </aside>
@@ -273,29 +223,37 @@
     <!-- Глобальный индикатор загрузки (HTMX) -->
     <div id="global-loading-bar"
          style="opacity:0; transition: opacity 0.15s"
-         class="fixed top-0 left-0 right-0 z-50 h-0.5 bg-blue-500 pointer-events-none"></div>
+         class="fixed top-0 left-0 right-0 z-50 h-0.5 bg-primary pointer-events-none"></div>
     <!-- Топбар -->
-    <header class="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between flex-shrink-0">
-      <h1 class="text-sm font-semibold text-slate-700">{% block header %}{% endblock %}</h1>
-      {% if offline_snap_active %}
-        <div class="flex items-center gap-2 text-xs">
-          <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 font-medium">
-            <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z"/></svg>
-            оффлайн
-          </span>
-          <span class="text-slate-500">{{ offline_snap_name }}</span>
-        </div>
-      {% elif selected_dev is defined and selected_dev %}
-        <div class="flex items-center gap-3 text-xs text-slate-500">
-          <span class="font-medium text-slate-700">{{ selected_dev.name }}</span>
-          {% if selected_dev.last_sync %}
-            <span>· Sync: {{ selected_dev.last_sync[:16] | replace('T',' ') }}</span>
-            <span>· {{ selected_dev.rules_count }} правил</span>
-          {% else %}
-            <span class="text-amber-500">· Sync не выполнен</span>
-          {% endif %}
-        </div>
-      {% endif %}
+    <header class="bg-surface border-b border-border px-6 py-3 flex items-center justify-between flex-shrink-0 gap-4">
+      <h1 class="text-sm font-semibold text-body">{% block header %}{% endblock %}</h1>
+      <div class="flex items-center gap-3">
+        {% if offline_snap_active %}
+          <div class="flex items-center gap-2 text-xs">
+            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface-muted text-secondary font-medium">
+              <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z"/></svg>
+              оффлайн
+            </span>
+            <span class="text-muted">{{ offline_snap_name }}</span>
+          </div>
+        {% elif selected_dev is defined and selected_dev %}
+          <div class="flex items-center gap-3 text-xs text-muted">
+            <span class="font-medium text-body">{{ selected_dev.name }}</span>
+            {% if selected_dev.last_sync %}
+              <span>· Sync: {{ selected_dev.last_sync[:16] | replace('T',' ') }}</span>
+              <span>· {{ selected_dev.rules_count }} правил</span>
+            {% else %}
+              <span class="text-warn">· Sync не выполнен</span>
+            {% endif %}
+          </div>
+        {% endif %}
+        <button type="button" data-theme-toggle aria-label="Переключить тему"
+                class="inline-flex items-center gap-1.5 border border-border bg-surface hover:bg-surface-2
+                       text-secondary rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors">
+          <span data-theme-icon aria-hidden="true">☾</span>
+          <span data-theme-label>Тема</span>
+        </button>
+      </div>
     </header>
 
     <!-- Контент -->

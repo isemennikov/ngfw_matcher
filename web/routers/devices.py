@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import html
 import json
 import uuid
 from datetime import datetime, timezone
@@ -13,8 +14,8 @@ from fastapi import APIRouter, BackgroundTasks, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
-from .. import db, state
-from ..deps import require_connection, base_ctx
+from .. import db, state, config
+from ..deps import require_connection, base_ctx, read_upload_limited
 
 router = APIRouter()
 templates: Jinja2Templates = None  # injected from main
@@ -25,7 +26,7 @@ SNAP_DIR.mkdir(parents=True, exist_ok=True)
 
 def _host_snapshot_path(host: str) -> Path:
     """Один файл-снапшот на всю СУ — общий для всех групп устройства."""
-    slug = hashlib.sha1(host.encode()).hexdigest()[:16]
+    slug = hashlib.sha1(host.encode(), usedforsecurity=False).hexdigest()[:16]
     return SNAP_DIR / f"host_{slug}.json"
 
 
@@ -112,21 +113,25 @@ async def upload_device_snapshot(
 ):
     device = db.get_device(device_id)
     if not device:
-        return HTMLResponse("<span class='text-red-400 text-xs'>Устройство не найдено</span>")
+        return HTMLResponse("<span class='text-deny text-xs'>Устройство не найдено</span>")
 
-    if not file.filename.endswith(".json"):
-        return HTMLResponse("<span class='text-red-400 text-xs'>Только .json файлы</span>")
+    if not (file.filename or "").lower().endswith(".json"):
+        return HTMLResponse("<span class='text-deny text-xs'>Только .json файлы</span>")
 
-    data = await file.read()
+    try:
+        data = await read_upload_limited(file)
+    except ValueError as e:
+        return HTMLResponse(f"<span class='text-deny text-xs'>{html.escape(str(e))}</span>")
     try:
         parsed = json.loads(data)
         n_rules = len(parsed.get("rules") or [])
         if n_rules == 0:
             raise ValueError("нет правил")
     except Exception as e:
-        return HTMLResponse(f"<span class='text-red-400 text-xs'>Некорректный файл: {e}</span>")
+        return HTMLResponse(f"<span class='text-deny text-xs'>Некорректный файл: {html.escape(str(e))}</span>")
 
-    snap_path = SNAP_DIR / f"{device_id}.json"
+    safe_id = re.sub(r"[^A-Za-z0-9_-]", "_", device_id)
+    snap_path = SNAP_DIR / f"{safe_id}.json"
     snap_path.write_bytes(data)
 
     state.invalidate(str(snap_path))
@@ -134,7 +139,7 @@ async def upload_device_snapshot(
     db.update_device_snapshot(device_id, str(snap_path), now, n_rules)
 
     resp = Response(
-        content=f"<span class='text-green-400 text-xs'>✓ {n_rules} правил загружено из файла</span>",
+        content=f"<span class='text-allow text-xs'>✓ {n_rules} правил загружено из файла</span>",
         media_type="text/html",
         headers={"HX-Refresh": "true"},
     )
@@ -145,11 +150,11 @@ async def upload_device_snapshot(
 async def download_device_snapshot(device_id: str):
     device = db.get_device(device_id)
     if not device or not device.get("snapshot_path"):
-        return HTMLResponse("<span class='text-red-400 text-xs'>Снапшот не найден</span>", status_code=404)
+        return HTMLResponse("<span class='text-deny text-xs'>Снапшот не найден</span>", status_code=404)
 
     snap_path = Path(device["snapshot_path"])
     if not snap_path.exists():
-        return HTMLResponse("<span class='text-red-400 text-xs'>Файл снапшота не найден</span>", status_code=404)
+        return HTMLResponse("<span class='text-deny text-xs'>Файл снапшота не найден</span>", status_code=404)
 
     raw_name = device.get("name") or device_id
     safe_name = re.sub(r"[^\w\-]", "_", raw_name).strip("_")
@@ -213,16 +218,23 @@ async def _fetch_group(loop, src, group: dict) -> tuple[str, dict]:
     net_groups, svc_groups = await loop.run_in_executor(
         None, _collect_objects, src, raw_rules, raw_nat
     )
+    # Объекты, реально принадлежащие этой группе (для WhereIsUse — см. core/where_is_use.py)
+    own_net_objects, own_svc_objects = await asyncio.gather(
+        loop.run_in_executor(None, src.get_all_network_objects, gid),
+        loop.run_in_executor(None, src.get_all_service_objects, gid),
+    )
     return gid, {
-        "name":            group.get("name", gid),
-        "path":            group.get("_path", ""),
-        "depth":           group.get("_depth", 0),
-        "rules_count":     len(raw_rules),
-        "nat_rules_count": len(raw_nat),
-        "rules":           raw_rules,
-        "nat_rules":       raw_nat,
-        "net_groups":      net_groups,
-        "svc_groups":      svc_groups,
+        "name":             group.get("name", gid),
+        "path":             group.get("_path", ""),
+        "depth":            group.get("_depth", 0),
+        "rules_count":      len(raw_rules),
+        "nat_rules_count":  len(raw_nat),
+        "rules":            raw_rules,
+        "nat_rules":        raw_nat,
+        "net_groups":       net_groups,
+        "svc_groups":       svc_groups,
+        "own_net_objects":  own_net_objects,
+        "own_svc_objects":  own_svc_objects,
     }
 
 
@@ -232,7 +244,7 @@ async def _run_sync(job_id: str, host: str, token: str):
     finished = datetime.now(timezone.utc).isoformat()
     try:
         src  = NGFWDirectSource(host=host, username="", password="",
-                                token=token, verify_ssl=False)
+                                token=token, verify_ssl=config.VERIFY_SSL)
         loop = asyncio.get_event_loop()
 
         # Получаем всё дерево групп и параллельно грузим каждую — один раз на всю СУ

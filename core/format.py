@@ -1,6 +1,8 @@
 """Shared text formatting for raw PT NGFW rule objects."""
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from .resolver import PROTO
 
 
@@ -36,3 +38,39 @@ def format_svc_obj(obj: dict) -> str:
     if "serviceGroup" in obj:
         return f"[{obj['serviceGroup'].get('name','group')}]"
     return "?"
+
+
+# ─── Метки времени SecurityRule (createdAt / updatedAt) ──────────────────────
+
+def parse_rule_dt(value: str | None) -> datetime | None:
+    """ISO-8601 (возможен суффикс 'Z') → aware datetime в UTC, иначе None."""
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except (ValueError, AttributeError):
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def fmt_rule_date(value: str | None) -> str:
+    """'2026-05-19T19:38:08Z' → '19.05.2026' (UTC)."""
+    dt = parse_rule_dt(value)
+    return dt.strftime("%d.%m.%Y") if dt else ""
+
+
+def fmt_rule_datetime(value: str | None) -> str:
+    """'2026-05-19T19:38:08Z' → '19.05.2026 19:38 UTC'."""
+    dt = parse_rule_dt(value)
+    return dt.strftime("%d.%m.%Y %H:%M UTC") if dt else ""
+
+
+def rule_days_ago(value: str | None) -> int | None:
+    """Полных дней с момента метки до сейчас. Меньше нуля → 0."""
+    dt = parse_rule_dt(value)
+    if not dt:
+        return None
+    delta = datetime.now(timezone.utc) - dt
+    return max(0, delta.days)

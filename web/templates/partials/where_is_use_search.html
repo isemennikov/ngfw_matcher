@@ -1,0 +1,58 @@
+{% import "partials/rule_stamps.html" as ds %}
+{% macro kind_label(kind) %}{% if kind == 'ip_address' %}IP{% elif kind == 'ip_range' %}Диапазон{% elif kind == 'fqdn' %}FQDN{% elif kind == 'geo_address' %}GeoIP{% elif kind == 'network_group' %}Группа сетей{% elif kind == 'service' %}Сервис{% elif kind == 'service_group' %}Группа сервисов{% else %}{{ kind }}{% endif %}{% endmacro %}
+
+{% if not result.matches %}
+  <div class="text-center py-12 text-subtle text-sm">Объект не найден: «{{ result.query }}»</div>
+{% endif %}
+
+{% for m in result.matches %}
+  {% set obj = m.object %}
+  <div class="bg-surface rounded-xl border border-border mb-4 overflow-hidden">
+    <div class="px-5 py-3 border-b border-border-subtle flex items-center gap-3 flex-wrap bg-surface-2">
+      <span class="font-semibold text-sm text-body">{{ obj.name }}</span>
+      <span class="text-xs px-1.5 py-0.5 rounded bg-surface-muted text-muted border border-border">{{ kind_label(obj.kind) }}</span>
+      <span class="text-xs px-1.5 py-0.5 rounded
+        {% if obj.group_name == 'Global' %}bg-allow-bg text-allow border border-allow-border
+        {% else %}bg-warn-bg text-warn border border-warn-border{% endif %}">
+        Группа: {{ obj.group_name }}
+      </span>
+      <span class="text-xs text-subtle font-mono ml-auto">{{ obj.id }}</span>
+    </div>
+
+    <div class="px-5 py-3">
+      {% if not m.usages %}
+        <div class="text-xs text-subtle italic">Объект не используется ни в одном правиле</div>
+      {% else %}
+        <table class="w-full text-xs break-words">
+          <thead>
+            <tr class="text-left text-subtle border-b border-border-subtle">
+              <th class="pb-1.5 font-medium">Группа</th>
+              <th class="pb-1.5 font-medium">Правило</th>
+              <th class="pb-1.5 font-medium">Поле</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for u in m.usages %}
+              <tr class="border-b border-border-subtle">
+                <td class="py-1.5 pr-3">{{ u.group_name }}</td>
+                <td class="py-1.5 pr-3">
+                  {{ u.rule_name }}
+                  {% if u.kind == 'nat' %}<span class="text-secondary">(NAT)</span>{% endif %}
+                  {{ ds.stamps(u) }}
+                </td>
+                <td class="py-1.5">
+                  {% for f in u.fields %}
+                    <span class="inline-flex items-center gap-1 bg-surface-2 border border-border rounded px-1.5 py-0.5 mr-1">
+                      {{ f.field }}
+                      {% if f.via == 'group' %}<span class="text-subtle">(через группу)</span>{% endif %}
+                    </span>
+                  {% endfor %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% endif %}
+    </div>
+  </div>
+{% endfor %}

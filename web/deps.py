@@ -2,19 +2,57 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime
+from pathlib import Path
 
-from fastapi import HTTPException, Request
+from fastapi import HTTPException, Request, UploadFile
 from fastapi.responses import Response
 
 from . import db, state
+from .config import MAX_UPLOAD_BYTES
 from ..core.matcher import RuleMatcher
 from ..core.snapshot import list_groups, is_multi
 from .._version import __version__
 
 
+_SAFE_NAME = re.compile(r"[A-Za-z0-9._-]{1,128}")
+
+
 def session(request: Request) -> dict:
     return request.session
+
+
+def get_theme(request: Request) -> str:
+    """UI theme from cookie: 'light' | 'dark' | 'system' (default)."""
+    t = request.cookies.get("theme", "system")
+    return t if t in ("light", "dark", "system") else "system"
+
+
+def safe_json_name(filename: str | None) -> str | None:
+    """Basename-only, .json, restricted charset — blocks path traversal."""
+    name = Path(filename or "").name
+    if not name.lower().endswith(".json"):
+        return None
+    if not _SAFE_NAME.fullmatch(name):
+        return None
+    return name
+
+
+def resolve_under(base: Path, name: str) -> Path | None:
+    """Resolve base/name and ensure it stays inside base (defense in depth)."""
+    base_r = base.resolve()
+    candidate = (base_r / name).resolve()
+    if candidate != base_r and base_r not in candidate.parents:
+        return None
+    return candidate
+
+
+async def read_upload_limited(file: UploadFile, max_bytes: int = MAX_UPLOAD_BYTES) -> bytes:
+    data = await file.read(max_bytes + 1)
+    if len(data) > max_bytes:
+        raise ValueError(f"Файл слишком большой (лимит {max_bytes // (1024 * 1024)} МБ)")
+    return data
 
 
 def require_connection(request: Request) -> dict:
@@ -32,6 +70,64 @@ def require_device(request: Request) -> str:
     return device_id
 
 
+def _build_device_tree(raw: list[dict]) -> list[dict]:
+    """Annotate devices with depth + is_last (single pass, O(n)).
+
+    Узел не последний (is_last=False), если ниже есть строка той же глубины
+    до того, как встретится строка меньшей глубины (граница группы).
+    """
+    devices = []
+    for d in raw:
+        path = d.get("path") or d.get("name", "")
+        devices.append({**d, "depth": path.count(" / ")})
+
+    n = len(devices)
+    # next_sibling[i]: ближайший индекс j>i с depth[j]==depth[i] и без меньшей
+    # глубины между ними (та же группа). n если sibling'а нет.
+    next_sibling = [n] * n
+    stack: list[int] = []
+    for i in range(n):
+        depth = devices[i]["depth"]
+        while stack and devices[stack[-1]]["depth"] > depth:
+            stack.pop()
+        if stack and devices[stack[-1]]["depth"] == depth:
+            next_sibling[stack[-1]] = i
+            stack.pop()
+        stack.append(i)
+
+    for i, d in enumerate(devices):
+        d["is_last"] = next_sibling[i] >= n if d["depth"] > 0 else False
+        d["guides"] = _guides_for(devices, next_sibling, i)
+
+    return devices
+
+
+def _guides_for(devices: list[dict], next_sibling: list[int], i: int) -> list[bool]:
+    """Для узла i: для каждого уровня 1..depth — есть ли ещё вертикаль.
+
+    guides[k] == True, если вертикаль уровня k должна продолжаться ниже узла
+    (у соответствующего предка есть следующие siblings). CSS рисует линии.
+    """
+    depth = devices[i]["depth"]
+    if depth == 0:
+        return []
+    # Ближайшие предки: последний узел каждого уровня < depth, идущий до i.
+    ancestors: dict[int, int] = {}
+    for j in range(i - 1, -1, -1):
+        dj = devices[j]["depth"]
+        if dj < depth and dj not in ancestors:
+            ancestors[dj] = j
+        if len(ancestors) == depth:
+            break
+    # guides[level] для level = 1..depth: вертикаль уровня (level-1)
+    guides = []
+    for level in range(1, depth + 1):
+        a = ancestors.get(level - 1)
+        guides.append(a is not None and next_sibling[a] < len(devices))
+    return guides
+    return devices
+
+
 def base_ctx(request: Request) -> dict:
     """Sidebar context — always passed to full-page templates."""
     host = request.session.get("host")
@@ -39,26 +135,7 @@ def base_ctx(request: Request) -> dict:
     selected_id = request.session.get("selected_device")
     selected_dev = db.get_device(selected_id) if selected_id else None
 
-    devices = []
-    for d in raw:
-        path = d.get("path") or d.get("name", "")
-        depth = path.count(" / ")
-        devices.append({**d, "depth": depth})
-
-    for i, d in enumerate(devices):
-        depth = d["depth"]
-        if depth == 0:
-            d["is_last"] = False
-            continue
-        is_last = True
-        for j in range(i + 1, len(devices)):
-            next_depth = devices[j]["depth"]
-            if next_depth < depth:
-                break
-            if next_depth == depth:
-                is_last = False
-                break
-        d["is_last"] = is_last
+    devices = _build_device_tree(raw)
 
     # Группы внутри оффлайн multi-снапшота (глобальная загрузка JSON) — селектор
     # нужен только здесь: выбор группы устройств из дерева сам по себе уже
@@ -68,8 +145,7 @@ def base_ctx(request: Request) -> dict:
     offline_snap = request.session.get("offline_snap")
     if offline_snap:
         try:
-            with open(offline_snap, encoding="utf-8") as f:
-                snap = json.load(f)
+            snap = state.load_snapshot_dict(offline_snap)
             if is_multi(snap):
                 snap_groups = list_groups(snap)
                 if not active_group_id and snap_groups:
@@ -86,6 +162,7 @@ def base_ctx(request: Request) -> dict:
         "snap_groups":        snap_groups,
         "active_group_id":    active_group_id,
         "include_parent_groups": get_include_parents(request),
+        "theme":              get_theme(request),
     }
 
 
