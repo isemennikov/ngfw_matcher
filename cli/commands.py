@@ -327,7 +327,7 @@ def _export_find_rule_json(rules: list, path: str):
         for r in rules
     ]
     with open(path, "w", encoding="utf-8") as f:
-        json.dump({"_ngfw_matcher": _json_meta(), "count": len(out), "rules": out},
+        json.dump({"_ngfw_matcherer": _json_meta(), "count": len(out), "rules": out},
                   f, ensure_ascii=False, indent=2)
     print(c(f"[+] Найденные правила → {path}  ({len(out)} записей)", _C.GREEN))
 

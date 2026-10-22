@@ -14,11 +14,11 @@ data/
 !package.json
 !package-lock.json
 node_modules/
+troubleshooting/
+docs/
+prototype/
 
 .env
 .vscode
 .idea
-README.md
-CHANGELOG.md
-BACKLOG.md
 *.md

@@ -726,7 +726,7 @@ def export_shadowed_json(results: list[dict], path: str):
             "conflict":            entry["conflict"],
         })
 
-    output = {"_ngfw_matcher": _json_meta(), "total": total, "conflicts": conflicts, "rules": rules_out}
+    output = {"_ngfw_matcherer": _json_meta(), "total": total, "conflicts": conflicts, "rules": rules_out}
     with open(path, "w", encoding="utf-8") as f:
         json.dump(output, f, ensure_ascii=False, indent=2)
     print(c(f"[+] Теневые правила → {path}  ({total} записей)", _C.GREEN))
@@ -776,12 +776,12 @@ def export_csv(results: list[MatchResult], path: str):
 
 def print_version_footer() -> None:
     """Однострочный футер с версией — выводится после любой успешной команды."""
-    print(c(f"\n  ngfw-matcher  v{__version__}", _C.DIM))
+    print(c(f"\n  ngfw-matcherer  v{__version__}", _C.DIM))
 
 
 def _json_meta() -> dict:
     """Мета-блок для вставки в начало JSON-экспортов."""
-    return {"tool": "ngfw-matcher", "version": __version__}
+    return {"tool": "ngfw-matcherer", "version": __version__}
 
 
 # ─── rule-hits: статистика срабатываний ──────────────────────────────────────

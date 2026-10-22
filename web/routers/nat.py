@@ -1,14 +1,15 @@
 from __future__ import annotations
 
-import json
+import asyncio
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, Response
 from fastapi.templating import Jinja2Templates
 
+from .. import state
 from ..deps import (base_ctx, has_data_source, require_snapshot_path,
                     get_active_group_id, get_include_parents, json_download)
-from ...cli.builder import load_nat_rules_from_snapshot, _build_rules
+from ...core.rules import load_nat_rules_from_snapshot, build_rules
 from ...core.snapshot import get_effective_group
 from ...core.models import NatRule
 from ...core.format import format_net_obj, format_svc_obj
@@ -32,12 +33,11 @@ def _load_and_associate(request: Request, nat_type: str, search: str):
     snap_path       = require_snapshot_path(request)
     group_id        = get_active_group_id(request)
     include_parents = get_include_parents(request)
-    with open(snap_path, encoding="utf-8") as f:
-        snap = json.load(f)
+    snap = state.load_snapshot_dict(snap_path)
 
     grp       = get_effective_group(snap, group_id, include_parents=include_parents)
     nat_rules = load_nat_rules_from_snapshot(snap, group_id, include_parents=include_parents)
-    sec_rules = _build_rules(grp.get("rules") or [])
+    sec_rules = build_rules(grp.get("rules") or [])
     net_cache = grp.get("net_groups") or {}
     svc_cache = grp.get("svc_groups") or {}
     resolver  = ObjectResolver(
@@ -65,7 +65,7 @@ async def do_nat(
     search:   str = Form(""),
 ):
     try:
-        associations, _, _ = _load_and_associate(request, nat_type, search)
+        associations, _, _ = await asyncio.to_thread(_load_and_associate, request, nat_type, search)
     except Exception as e:
         return _error(request, str(e))
 
@@ -86,7 +86,8 @@ async def export_nat(
     search:   str = Form(""),
 ):
     try:
-        associations, net_cache, svc_cache = _load_and_associate(request, nat_type, search)
+        associations, net_cache, svc_cache = await asyncio.to_thread(
+            _load_and_associate, request, nat_type, search)
     except Exception as e:
         return _error(request, str(e))
 

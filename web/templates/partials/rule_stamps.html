@@ -1,0 +1,22 @@
+{# Метки SecurityRule created_at / updated_at.
+   Использование: {% import "partials/rule_stamps.html" as ds %} ... {{ ds.stamps(rule) }}
+   Работает и для NormalizedRule, и для dict (доступ через атрибут/ключ). #}
+{% macro stamps(rule) %}
+  {%- set created = rule.created_at if rule.created_at is defined else none -%}
+  {%- set updated = rule.updated_at if rule.updated_at is defined else none -%}
+  {%- if created or updated -%}
+    <span class="rule-stamps">
+      {%- if created -%}
+        <span class="stamp created" title="Создано: {{ created | rule_datetime }}">создано {{ created | rule_date }}</span>
+      {%- endif -%}
+      {%- if updated -%}
+        {%- set days = updated | rule_days_ago -%}
+        {%- set recent = days is not none and days <= rule_recent_days -%}
+        <span class="stamp {{ 'recent' if recent else 'updated' }}"
+              title="Изменено: {{ updated | rule_datetime }}{% if days is not none %} · {{ days }} дн. назад{% endif %}">изм. {{ updated | rule_date }}{% if recent %} · {{ days }} дн. назад{% endif %}</span>
+      {%- else -%}
+        <span class="stamp never" title="Правило не изменялось после создания">не изменялось</span>
+      {%- endif -%}
+    </span>
+  {%- endif -%}
+{% endmacro %}

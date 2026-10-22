@@ -23,6 +23,14 @@ log = logging.getLogger("ngfw.source.ngfw_api")
 
 PAGE_SIZE = 1000
 
+_NET_OBJ_KIND = {
+    "addresses":     "ip_address",
+    "ranges":        "ip_range",
+    "fqdnAddresses": "fqdn",
+    "geoAddresses":  "geo_address",
+    "networkGroups": "network_group",
+}
+
 
 class NGFWDirectSource:
 
@@ -79,7 +87,7 @@ class NGFWDirectSource:
             url, data=json.dumps(body).encode(), headers=headers, method="POST"
         )
         try:
-            with urllib.request.urlopen(req, context=self._ssl_ctx, timeout=30) as resp:
+            with urllib.request.urlopen(req, context=self._ssl_ctx, timeout=30) as resp:  # nosec B310 (fixed https base_url from connect)
                 raw      = resp.read()
                 resp_hdrs = dict(resp.headers)
                 parsed   = json.loads(raw) if raw else {}
@@ -378,6 +386,7 @@ class NGFWDirectSource:
                 for obj in resp.get(key) or []:
                     oid = obj.get("id")
                     if oid:
+                        obj["_kind"] = _NET_OBJ_KIND[key]
                         obj_map[oid] = obj
                         count += 1
             if count < PAGE_SIZE:

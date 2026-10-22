@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Отчёт — ngfw-matcher</title>
+<style>
+  /* ── tokens (подмножество, синхронно с tokens.css) ─────────────── */
+  :root{
+    --g50:#F4F5F7; --g100:#E4E6EA; --g200:#C9CDD3; --g300:#A2A8B1;
+    --g400:#757C86; --g500:#545A63; --g600:#3A3F46; --g800:#1E2126; --g900:#15171A;
+    --red500:#E4002B; --red600:#C81E2B; --red100:#FBDDE0; --red50:#FEF0F1;
+    --green600:#1F8A4C; --green100:#D9F2E4; --green50:#EEF9F3;
+    --amber500:#B45309; --amber100:#FDE9C8; --amber50:#FEF7EC;
+    --bg:var(--g50); --surface:#fff; --surface-2:var(--g50); --surface-muted:var(--g100);
+    --border:var(--g200); --border-subtle:var(--g100);
+    --text:var(--g800); --text-2:var(--g600); --text-muted:var(--g500); --text-subtle:var(--g400);
+    --primary:var(--g800);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--bg); color:var(--text);
+    font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .page{max-width:1040px; margin:24px auto; padding:0 20px}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+
+  /* ── Шапка отчёта ─────────────────────────────────────────────── */
+  .sheet{background:var(--surface); border:1px solid var(--border); border-radius:16px; overflow:hidden; box-shadow:0 1px 2px rgba(0,0,0,.04)}
+  .head{padding:22px 26px; border-bottom:1px solid var(--border-subtle); display:flex; gap:16px; align-items:flex-start; flex-wrap:wrap}
+  .brand{display:flex; align-items:center; gap:10px}
+  .mark{width:34px;height:34px;border-radius:9px;background:var(--red500);color:#fff;font-weight:800;display:flex;align-items:center;justify-content:center;font-size:18px}
+  .brand b{font-size:15px; letter-spacing:.2px}
+  .brand small{display:block;color:var(--text-subtle);font-size:11px;font-weight:500}
+  .titles{margin-left:auto; text-align:right}
+  .titles h1{margin:0; font-size:18px; font-weight:700}
+  .titles .sub{color:var(--text-muted); font-size:12px; margin-top:2px}
+  .meta{width:100%; margin-top:16px; display:grid; grid-template-columns:repeat(4,1fr); gap:10px 22px}
+  .meta div{font-size:12px}
+  .meta dt{color:var(--text-subtle); text-transform:uppercase; letter-spacing:.04em; font-size:10px; font-weight:600; margin-bottom:2px}
+  .meta dd{margin:0; font-weight:600}
+
+  /* ── Тулбар (экран) ───────────────────────────────────────────── */
+  .toolbar{display:flex; gap:8px; align-items:center; margin:14px 0; flex-wrap:wrap}
+  .toolbar .lead{color:var(--text-subtle); font-size:12px; margin-right:auto}
+  .btn{display:inline-flex; align-items:center; gap:7px; border:1px solid var(--border); background:var(--surface);
+       color:var(--text-2); font-size:12.5px; font-weight:600; padding:8px 12px; border-radius:9px; cursor:pointer}
+  .btn:hover{background:var(--surface-2)}
+  .btn.primary{background:var(--primary); color:#fff; border-color:var(--primary)}
+  .btn svg{width:15px;height:15px}
+
+  /* ── KPI ──────────────────────────────────────────────────────── */
+  .kpis{display:grid; grid-template-columns:repeat(4,1fr); gap:12px; padding:20px 26px; border-bottom:1px solid var(--border-subtle)}
+  .kpi{border:1px solid var(--border); border-radius:12px; padding:12px 14px; background:var(--surface-2)}
+  .kpi .n{font-size:22px; font-weight:700; letter-spacing:-.02em}
+  .kpi .l{font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.04em; font-weight:600; margin-top:2px}
+  .kpi.deny .n{color:var(--red600)} .kpi.allow .n{color:var(--green600)} .kpi.warn .n{color:var(--amber500)}
+
+  /* ── Табы ─────────────────────────────────────────────────────── */
+  .tabs{display:flex; gap:2px; padding:0 26px; border-bottom:1px solid var(--border); background:var(--surface-2)}
+  .tabs button{border:0; background:transparent; color:var(--text-muted); font-weight:600; font-size:13px;
+      padding:12px 14px; cursor:pointer; border-bottom:2px solid transparent}
+  .tabs button.active{color:var(--text); border-bottom-color:var(--red500)}
+  .tab{display:none; padding:22px 26px}
+  .tab.active{display:block}
+  .tab h2{font-size:14px; margin:0 0 12px}
+  .tab h2 .muted{color:var(--text-subtle); font-weight:500; font-size:12px}
+
+  /* ── Таблицы ──────────────────────────────────────────────────── */
+  table{width:100%; border-collapse:collapse; font-size:13px; break-word:break-word}
+  th{text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.05em; color:var(--text-muted);
+     background:var(--surface-2); border-bottom:1px solid var(--border); padding:8px 10px; font-weight:600}
+  td{padding:8px 10px; border-bottom:1px solid var(--border-subtle); vertical-align:top; word-break:break-word}
+  tr:last-child td{border-bottom:0}
+  .num{color:var(--text-subtle); font-family:ui-monospace,monospace; width:44px}
+  .sec{color:var(--text-2); font-size:12.5px}
+  .dash{color:var(--text-subtle)}
+
+  .badge{display:inline-flex; align-items:center; padding:1px 7px; border-radius:6px; font-size:11px; font-weight:700; border:1px solid}
+  .b-allow{color:var(--green600); background:var(--green50); border-color:var(--green100)}
+  .b-deny{color:var(--red600); background:var(--red50); border-color:var(--red100)}
+  .b-warn{color:var(--amber500); background:var(--amber50); border-color:var(--amber100)}
+  .b-neutral{color:var(--text-muted); background:var(--surface-muted); border-color:var(--border)}
+  .b-src,.b-dst{color:var(--text-2); background:var(--surface-muted); border-color:var(--border)}
+
+  /* fullview groups */
+  .grp{display:flex; align-items:center; gap:8px; margin:18px 0 8px}
+  .grp:first-of-type{margin-top:0}
+  .grp .addr{font-family:ui-monospace,monospace; font-weight:600}
+  .grp .cnt{color:var(--text-subtle); font-size:12px}
+  .card{border:1px solid var(--border); border-radius:12px; overflow:hidden}
+
+  /* match thread */
+  .flow{font-family:ui-monospace,monospace; font-size:12.5px; color:var(--text-muted);
+        background:var(--surface-2); border:1px solid var(--border); border-radius:10px; padding:8px 12px; margin-bottom:14px}
+  .rule{border:1px solid var(--border); border-radius:12px; overflow:hidden}
+  .rule .root{padding:14px 16px; border-bottom:1px solid var(--border)}
+  .rule .root.allow{background:var(--green50); border-bottom-color:var(--green100)}
+  .rule .root.deny{background:var(--red50); border-bottom-color:var(--red100)}
+  .rule .row{display:flex; align-items:center; gap:10px; flex-wrap:wrap}
+  .rule .name{font-weight:700; font-size:13.5px}
+  .rule .pos{color:var(--text-subtle); font-size:11.5px}
+  .rule .fields{margin-top:8px; display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; font-size:12px; color:var(--text-2)}
+  .rule .fields span.k{color:var(--text-subtle); font-family:ui-monospace,monospace}
+  .rule .uid{color:var(--text-subtle); font-family:ui-monospace,monospace; font-size:11px; margin-top:6px}
+  .branch{padding:11px 16px; border-bottom:1px solid var(--border-subtle); display:flex; gap:10px}
+  .branch:last-child{border-bottom:0}
+  .dot{width:10px;height:10px;border-radius:50%;flex:0 0 auto;margin-top:4px}
+  .dot.allow{background:var(--green600)} .dot.deny{background:var(--red600)} .dot.off{background:var(--text-subtle)}
+  .branch .b-name{font-weight:600}
+  .branch .b-fields{color:var(--text-muted); font-size:11.5px; margin-top:3px}
+  .shadowfoot{padding:8px 16px; background:var(--amber50); color:var(--amber500); font-size:12px; border-top:1px solid var(--amber100)}
+
+  /* shadows pairs */
+  .pair{border:1px solid var(--border); border-radius:12px; overflow:hidden; margin-bottom:12px}
+  .pair .p-head{padding:10px 14px; background:var(--amber50); border-bottom:1px solid var(--amber100); display:flex; gap:10px; align-items:center; flex-wrap:wrap}
+  .pair .p-body{display:grid; grid-template-columns:1fr auto 1fr; gap:0}
+  .pair .cell{padding:12px 14px}
+  .pair .cell .lbl{font-size:10px; text-transform:uppercase; letter-spacing:.05em; color:var(--text-subtle); font-weight:700; margin-bottom:6px}
+  .pair .arrow{display:flex; align-items:center; justify-content:center; padding:0 8px; color:var(--text-subtle)}
+
+  /* nat cards */
+  .nat{border:1px solid var(--border); border-radius:12px; margin-bottom:12px; overflow:hidden}
+  .nat .n-head{display:flex; align-items:center; gap:10px; padding:11px 14px; background:var(--surface-2); border-bottom:1px solid var(--border); flex-wrap:wrap}
+  .nat .n-head .name{font-weight:700}
+  .nat .n-head .pos{margin-left:auto; color:var(--text-subtle); font-family:ui-monospace,monospace; font-size:11.5px}
+  .nat .n-body{display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; padding:12px 14px; font-size:12.5px}
+  .nat .col .h{color:var(--text-muted); font-weight:600; margin-bottom:6px}
+  .nat .col .v{color:var(--text-2)}
+  .nat .sec-list{border-top:1px solid var(--border-subtle); padding:10px 14px; display:flex; flex-direction:column; gap:6px}
+  .nat .sec-item{display:flex; align-items:center; gap:8px; font-size:12px}
+  .nat .sec-item .nm{font-family:ui-monospace,monospace; color:var(--text-2)}
+  .nat .sec-item .pp{color:var(--text-subtle); font-family:ui-monospace,monospace; font-size:11px}
+
+  /* csv preview */
+  .csv{margin:0 26px 24px; border:1px solid var(--border); border-radius:12px; overflow:hidden}
+  .csv .c-head{padding:10px 14px; background:var(--surface-2); border-bottom:1px solid var(--border); display:flex; align-items:center; gap:8px}
+  .csv .c-head .t{font-weight:600; font-size:12.5px}
+  .csv .c-head .f{margin-left:auto; color:var(--text-subtle); font-family:ui-monospace,monospace; font-size:11.5px}
+  .csv pre{margin:0; padding:14px; font-size:12px; line-height:1.5; overflow:auto; background:#fff;
+      font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; color:var(--text-2)}
+  .csv pre .hdr{color:var(--text); font-weight:700}
+
+  .foot{padding:14px 26px; border-top:1px solid var(--border-subtle); color:var(--text-subtle); font-size:11px;
+        display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap}
+
+  .note{max-width:1040px; margin:0 auto 8px; padding:0 20px; color:var(--text-subtle); font-size:12px}
+
+  /* ── Печать / PDF ─────────────────────────────────────────────── */
+  @media print{
+    @page{ size:A4; margin:12mm 10mm; }
+    body{background:#fff}
+    .page{max-width:none; margin:0; padding:0}
+    .sheet{border:0; border-radius:0; box-shadow:none}
+    .toolbar,.note{display:none !important}
+    .tabs{display:none !important}
+    .tab{display:block !important; padding:16px 0; break-inside:auto}
+    .tab+ .tab{border-top:1px solid var(--border)}
+    .head{padding:0 0 14px}
+    .kpis{padding:14px 0}
+    .csv{margin:16px 0 0}
+    table,.card,.rule,.pair,.nat{break-inside:avoid}
+    tr{break-inside:avoid}
+    th{position:static}
+    .foot{padding:10px 0 0}
+  }
+</style>
+</head>
+<body>
+<div class="note">Образец (макет) отчёта — под screen и печать в PDF. Данные вымышленные.</div>
+<div class="page">
+
+  <div class="sheet">
+
+    <!-- Шапка -->
+    <div class="head">
+      <div class="brand">
+        <div class="mark">N</div>
+        <div><b>ngfw-matcher</b><small>анализ политик PT NGFW</small></div>
+      </div>
+      <div class="titles">
+        <h1>Отчёт по анализу политики</h1>
+        <div class="sub">Fullview · Match · Shadows · NAT Audit</div>
+      </div>
+      <dl class="meta">
+        <div><dt>Устройство</dt><dd>DC</dd></div>
+        <div><dt>Группа</dt><dd>Global</dd></div>
+        <div><dt>СУ</dt><dd class="mono" style="font-size:12px">10.1.31.100</dd></div>
+        <div><dt>Сформирован</dt><dd>2026-10-14 12:57 UTC</dd></div>
+        <div><dt>Снапшот</dt><dd>2026-10-14 12:57 · 435 правил</dd></div>
+        <div><dt>Запрос (Fullview)</dt><dd class="mono" style="font-size:12px">src 10.0.0.0/8</dd></div>
+        <div><dt>Исключения</dt><dd class="mono" style="font-size:12px">src ⊆ 10.31.64.0/19</dd></div>
+        <div><dt>Версия</dt><dd>ngfw-matcher 2.5.0</dd></div>
+      </dl>
+    </div>
+
+    <!-- KPI -->
+    <div class="kpis">
+      <div class="kpi"><div class="n">12</div><div class="l">правил (Fullview)</div></div>
+      <div class="kpi deny"><div class="n">9</div><div class="l">Drop / Deny</div></div>
+      <div class="kpi allow"><div class="n">3</div><div class="l">Allow</div></div>
+      <div class="kpi warn"><div class="n">17</div><div class="l">исключено / теневых</div></div>
+    </div>
+
+    <!-- Тулбар -->
+    <div class="toolbar">
+      <span class="lead">Данные снапшота, локальный расчёт — без обращений к СУ.</span>
+      <button class="btn" onclick="alert('CSV: fullview_20261014_1257.csv')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>CSV
+      </button>
+      <button class="btn" onclick="alert('HTML: self-contained (этот файл)')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3v5h5M6 3h9l5 5v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5a2 2 0 012-2z"/></svg>HTML
+      </button>
+      <button class="btn primary" onclick="window.print()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V3h12v6M6 18H4v-6h16v6h-2M8 14h8v7H8z"/></svg>PDF (печать)
+      </button>
+    </div>
+
+    <!-- Табы -->
+    <div class="tabs">
+      <button data-t="fullview" class="active">Fullview</button>
+      <button data-t="match">Match</button>
+      <button data-t="shadows">Shadows</button>
+      <button data-t="nat">NAT Audit</button>
+    </div>
+
+    <!-- Fullview -->
+    <section class="tab active" id="t-fullview">
+      <h2>Fullview <span class="muted">— правила по адресу · найдено 12 из 435</span></h2>
+
+      <div class="grp"><span class="badge b-src">sourceAddr</span>
+        <span class="addr">10.0.0.0/8</span><span class="cnt">→ 12 правил</span></div>
+
+      <div class="card">
+        <table>
+          <thead><tr><th>#</th><th>Правило</th><th>Действие</th><th>Source</th><th>Destination</th><th>Service</th></tr></thead>
+          <tbody>
+            <tr>
+              <td class="num">2</td>
+              <td><span style="font-weight:600">to FUN&SUN block pre…</span><div class="dash mono" style="font-size:11px">pre</div></td>
+              <td><span class="badge b-deny">DROP</span></td>
+              <td class="sec"><span class="dash">ANY</span></td>
+              <td class="sec mono">[netgr___FUN&SUN_block] +3, 91.238.227.6/32, 195.128.158.21/32, 109.73.41.80/28</td>
+              <td class="sec"><span class="dash">ANY</span></td>
+            </tr>
+            <tr>
+              <td class="num">36</td>
+              <td><span style="font-weight:600">BLOCK_TO_PUBLIC_IP_06122025</span><div class="dash mono" style="font-size:11px">pre</div></td>
+              <td><span class="badge b-deny">DROP</span></td>
+              <td class="sec"><span class="dash">ANY</span></td>
+              <td class="sec mono">[ALL_PUBLIC_IP] +12, 185.62.200.150/32, 185.62.200.148/32, 185.79.119.51/32</td>
+              <td class="sec mono">TCP/2601, TCP/2605, TCP/2616, UDP/53 +1</td>
+            </tr>
+            <tr>
+              <td class="num">56</td>
+              <td><span style="font-weight:600">Vuln_main_drop</span><div class="dash mono" style="font-size:11px">pre</div></td>
+              <td><span class="badge b-deny">DROP</span></td>
+              <td class="sec"><span class="dash">ANY</span></td>
+              <td class="sec mono">[netgr_all_bank_nets] +13, 10.43.0.0/16, 10.44.0.0/16, 10.108.96.0/19</td>
+              <td class="sec mono">UDP/623</td>
+            </tr>
+            <tr>
+              <td class="num">11</td>
+              <td><span style="font-weight:600">ICMP</span><div class="dash mono" style="font-size:11px">pre</div></td>
+              <td><span class="badge b-allow">ALLOW</span></td>
+              <td class="sec"><span class="dash">ANY</span></td>
+              <td class="sec"><span class="dash">ANY</span></td>
+              <td class="sec mono">ICMP</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p style="color:var(--text-subtle);font-size:12px;margin:10px 0 0">
+        Показаны 4 из 12. Исключено по <span class="mono">sourceAddr ⊆ 10.31.64.0/19</span>: 17 правил.</p>
+    </section>
+
+    <!-- Match -->
+    <section class="tab" id="t-match">
+      <h2>Match <span class="muted">— симуляция трафика · first-match</span></h2>
+      <div class="flow">10.0.0.0/8 → 0.0.0.0/0 /any &nbsp;·&nbsp; strict</div>
+
+      <div class="rule">
+        <div class="root deny">
+          <div class="row">
+            <span class="dot deny"></span>
+            <span class="name">to FUN&SUN block pre…</span>
+            <span class="badge b-deny">DROP</span>
+            <span class="badge b-neutral">PRE #2</span>
+            <span class="pos">глоб. #2 · Global</span>
+          </div>
+          <div class="fields">
+            <div><span class="k">src</span> ANY</div>
+            <div><span class="k">dst</span> [netgr___FUN&SUN_block] +3, 91.238.227.6/32…</div>
+            <div><span class="k">svc</span> ANY</div>
+          </div>
+          <div class="uid">019edf0d-ed30-76d9-a03d-555216c65b6e</div>
+        </div>
+        <div class="branch">
+          <span class="dot allow"></span>
+          <div><div class="b-name">ICMP <span class="badge b-allow">ALLOW</span> <span class="badge b-neutral">PRE #11</span></div>
+            <div class="b-fields">перекрыто более ранним правилом</div></div>
+        </div>
+        <div class="branch">
+          <span class="dot allow"></span>
+          <div><div class="b-name">snat_11_test_1 <span class="badge b-allow">ALLOW</span> <span class="badge b-neutral">PRE #13</span></div>
+            <div class="b-fields">перекрыто более ранним правилом</div></div>
+        </div>
+        <div class="shadowfoot">⚠ 2 теневых правила — кандидаты на удаление</div>
+      </div>
+    </section>
+
+    <!-- Shadows -->
+    <section class="tab" id="t-shadows">
+      <h2>Shadows <span class="muted">— перекрытые правила · partial</span></h2>
+
+      <div class="pair">
+        <div class="p-head"><span class="badge b-warn">CONFLICT src+svc</span>
+          <span style="color:var(--text-2);font-size:12.5px">Теневое правило полностью/частично перекрыто более ранним</span></div>
+        <div class="p-body">
+          <div class="cell">
+            <div class="lbl">Теневое (позже)</div>
+            <div style="font-weight:600">allow_ttfp_for_ESR</div>
+            <div class="dash mono" style="font-size:11px">PRE #14 · глоб. #14</div>
+            <div class="sec" style="margin-top:6px"><span class="dash">src</span> 10.108.64.29/32, 10.108.64.30/32</div>
+            <div class="sec"><span class="dash">dst</span> 10.24.64.60/32</div>
+            <div class="sec mono">svc UDP/69</div>
+          </div>
+          <div class="arrow">⟶</div>
+          <div class="cell" style="background:var(--surface-2)">
+            <div class="lbl">Перекрывающее (раньше)</div>
+            <div style="font-weight:600">to FUN&SUN block pre…</div>
+            <div class="dash mono" style="font-size:11px">PRE #2 · глоб. #2</div>
+            <div class="sec" style="margin-top:6px"><span class="dash">src</span> ANY ⊇ 10.108.64.29/32</div>
+            <div class="sec"><span class="dash">dst</span> ANY ⊇ 10.24.64.60/32</div>
+            <div class="sec mono">svc ANY ⊇ UDP/69</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <table>
+          <thead><tr><th>#</th><th>Теневое правило</th><th>Действие</th><th>Перекрыто правилом</th><th>Измерения</th></tr></thead>
+          <tbody>
+            <tr><td class="num">14</td><td>allow_ttfp_for_ESR</td><td><span class="badge b-allow">ALLOW</span></td><td>to FUN&SUN block (PRE #2)</td><td><span class="badge b-warn">src+svc</span></td></tr>
+            <tr><td class="num">16</td><td>default_zbx_proxy_in</td><td><span class="badge b-allow">ALLOW</span></td><td>to FUN&SUN block (PRE #2)</td><td><span class="badge b-warn">dst</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- NAT -->
+    <section class="tab" id="t-nat">
+      <h2>NAT Audit <span class="muted">— трансляции и связь с правилами безопасности</span></h2>
+
+      <div class="nat">
+        <div class="n-head"><span class="name">snat_office_out</span>
+          <span class="badge b-neutral">SNAT →</span>
+          <span class="pos">#12 post</span></div>
+        <div class="n-body">
+          <div class="col"><div class="h">Матчинг</div>
+            <div class="v mono">src 10.24.0.0/16<br>dst ANY<br>svc TCP/any</div></div>
+          <div class="col"><div class="h">SNAT →</div>
+            <div class="v mono">10.24.0.0/16 → 185.62.200.10 (Masquerade? нет)</div></div>
+          <div class="col"><div class="h">Покрытие</div>
+            <div class="v"><span class="badge b-allow">✓ full</span> — правило безопасности полностью покрывает</div></div>
+        </div>
+        <div class="sec-list">
+          <div class="sec-item"><span class="badge b-allow">ALLOW</span>
+            <span class="nm">allow_office_internet</span><span class="pp">#40 pre</span>
+            <span class="badge b-allow" style="margin-left:auto">✓ full</span></div>
+        </div>
+      </div>
+
+      <div class="nat">
+        <div class="n-head"><span class="name">dnat_web_443</span>
+          <span class="badge b-neutral">DNAT ←</span>
+          <span class="pos">#21 post</span></div>
+        <div class="n-body">
+          <div class="col"><div class="h">Матчинг</div>
+            <div class="v mono">src ANY<br>dst 203.0.113.5/32<br>svc TCP/443</div></div>
+          <div class="col"><div class="h">DNAT ←</div>
+            <div class="v mono">203.0.113.5:443 → 10.10.20.15:8443</div></div>
+          <div class="col"><div class="h">Покрытие</div>
+            <div class="v"><span class="badge b-warn">⚠ src</span> — часть NAT-трафика может быть заблокирована</div></div>
+        </div>
+        <div class="sec-list">
+          <div class="sec-item"><span class="badge b-deny">DENY</span>
+            <span class="nm">block_external_scanners</span><span class="pp">#8 pre</span>
+            <span class="badge b-warn" style="margin-left:auto">⚠ src</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CSV -->
+    <div class="csv">
+      <div class="c-head">
+        <span class="t">CSV-выгрузка</span>
+        <span class="badge b-neutral">UTF-8 · «;»</span>
+        <span class="f">fullview_20261014_1257.csv</span>
+      </div>
+      <pre><span class="hdr">mode;addr;rule_pos;rule_name;action;enabled;src;dst;service</span>
+src;10.0.0.0/8;2;to FUN&SUN block pre;drop;1;ANY;"[netgr___FUN&SUN_block] +3, 91.238.227.6/32, 195.128.158.21/32";ANY
+src;10.0.0.0/8;36;BLOCK_TO_PUBLIC_IP_06122025;drop;1;ANY;"[ALL_PUBLIC_IP] +12, 185.62.200.150/32";"TCP/2601, TCP/2605, TCP/2616"
+src;10.0.0.0/8;11;ICMP;allow;1;ANY;ANY;ICMP</pre>
+    </div>
+
+    <div class="foot">
+      <span>ngfw-matcher 2.5.0 · снапшот от 2026-10-14 12:57 UTC · локальный расчёт</span>
+      <span>Страница 1</span>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  document.querySelectorAll('.tabs button').forEach(function(b){
+    b.addEventListener('click', function(){
+      document.querySelectorAll('.tabs button').forEach(x=>x.classList.remove('active'));
+      document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+      b.classList.add('active');
+      document.getElementById('t-'+b.dataset.t).classList.add('active');
+    });
+  });
+</script>
+</body>
+</html>

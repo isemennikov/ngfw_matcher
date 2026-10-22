@@ -1,0 +1,7 @@
+services:
+  bandit:
+    image: python:3.11-slim
+    working_dir: /src
+    volumes:
+      - .:/src:ro
+    command: ["sh", "-c", "pip install --no-cache-dir --quiet bandit && bandit -r . -f screen -x ./.claude,./.git,./node_modules,./data,./.venv"]

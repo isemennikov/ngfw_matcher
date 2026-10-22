@@ -4,7 +4,7 @@ FROM node:20-slim AS assets
 WORKDIR /build
 COPY package.json tailwind.config.js ./
 COPY web/templates ./web/templates
-COPY web/static/css/input.css ./web/static/css/input.css
+COPY web/static/css/input.css web/static/css/tokens.css ./web/static/css/
 RUN npm install --no-audit --no-fund && \
     npx tailwindcss -i web/static/css/input.css -o web/static/css/tailwind.css --minify
 

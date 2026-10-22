@@ -2,9 +2,16 @@ services:
   web:
     build: .
     ports:
-      - "8080:8080"
+      # Publish only on localhost — the UI is not exposed to the network.
+      - "127.0.0.1:8080:8080"
     volumes:
       - ./data:/app/ngfw_matcher/data
+    environment:
+      - NGFW_SECRET_KEY=${NGFW_SECRET_KEY:-}
+      - NGFW_VERIFY_SSL=${NGFW_VERIFY_SSL:-0}
+      - NGFW_COOKIE_SECURE=${NGFW_COOKIE_SECURE:-0}
+      - NGFW_MAX_UPLOAD_MB=${NGFW_MAX_UPLOAD_MB:-64}
+      - NGFW_SESSION_MAX_AGE=${NGFW_SESSION_MAX_AGE:-43200}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     restart: unless-stopped

@@ -8,7 +8,7 @@ from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, Response
 from fastapi.templating import Jinja2Templates
 
-from .. import db
+from .. import db, config
 from ..deps import require_connection, require_matcher, base_ctx, json_download
 
 log = logging.getLogger("ngfw.hits")
@@ -63,11 +63,11 @@ async def sync_hits(request: Request):
 
     rules    = list(matcher.rules)
     rule_ids = [r.uid for r in rules]
-    meta     = {r.uid: (r.name, r.enabled) for r in rules}
+    meta     = {r.uid: (r.name, r.enabled, r.created_at, r.updated_at) for r in rules}
 
     from ...sources.ngfw_api import NGFWDirectSource
     src = NGFWDirectSource(host=sess["host"], username="", password="",
-                           token=sess["token"], verify_ssl=False)
+                           token=sess["token"], verify_ssl=config.VERIFY_SSL)
 
     try:
         hits_data = await asyncio.get_event_loop().run_in_executor(
@@ -86,14 +86,15 @@ async def sync_hits(request: Request):
 
     synced_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     save_rows = []
-    for rule_id, (name, enabled) in meta.items():
+    for rule_id, (name, enabled, created_at, updated_at) in meta.items():
         raw_h = hits_by_id.get(rule_id, {}).get("hits", 0)
         try:
             hits = int(raw_h)
         except (ValueError, TypeError):
             hits = 0
         save_rows.append({"rule_id": rule_id, "name": name,
-                          "hits": hits, "enabled": enabled})
+                          "hits": hits, "enabled": enabled,
+                          "created_at": created_at, "updated_at": updated_at})
 
     db.save_rule_hits(device_id, save_rows, synced_at)
 

@@ -1,0 +1,71 @@
+{% import "partials/rule_stamps.html" as ds %}
+{% macro kind_label(kind) %}{% if kind == 'ip_address' %}IP{% elif kind == 'ip_range' %}Диапазон{% elif kind == 'fqdn' %}FQDN{% elif kind == 'geo_address' %}GeoIP{% elif kind == 'network_group' %}Группа сетей{% elif kind == 'service' %}Сервис{% elif kind == 'service_group' %}Группа сервисов{% else %}{{ kind }}{% endif %}{% endmacro %}
+
+{% if summary %}
+<div class="flex flex-wrap items-center gap-x-6 gap-y-1.5 mb-4 px-4 py-2.5 bg-surface-2 border border-border rounded-lg text-xs text-muted">
+  <span>
+    Объектов вне Global:
+    <span class="font-mono font-semibold text-warn">{{ summary.objects_non_global }}</span>
+    <span class="text-subtle">(сети: {{ summary.objects_non_global_net }}, сервисы: {{ summary.objects_non_global_svc }})</span>
+  </span>
+  <span>
+    Правил безопасности с такими объектами:
+    <span class="font-mono font-semibold text-warn">{{ summary.rules_flagged }}</span>
+    из {{ summary.rules_total }}
+    {% if summary.rules_total %}({{ ((summary.rules_flagged / summary.rules_total) * 100) | round(1) }}%){% endif %}
+  </span>
+  <span>
+    NAT-правил с такими объектами:
+    <span class="font-mono font-semibold text-warn">{{ summary.nat_rules_flagged }}</span>
+    из {{ summary.nat_rules_total }}
+    {% if summary.nat_rules_total %}({{ ((summary.nat_rules_flagged / summary.nat_rules_total) * 100) | round(1) }}%){% endif %}
+  </span>
+</div>
+{% endif %}
+
+<div class="text-xs text-muted mb-4">
+  Правил с объектами вне Global: <span class="font-semibold text-body">{{ total }}</span>
+</div>
+
+{% for e in entries %}
+  <div class="bg-surface rounded-xl border border-border mb-3 overflow-hidden hover:border-border transition-colors">
+    <div class="px-5 py-3 border-b border-border-subtle flex items-center gap-3 flex-wrap
+      {% if e.kind == 'nat' %}bg-surface-muted{% elif e.action == 'allow' %}bg-allow-bg{% else %}bg-deny-bg{% endif %}">
+      <span class="font-semibold text-sm text-body">{{ e.rule_name }}</span>
+
+      {% if e.kind == 'nat' %}
+        <span class="inline-flex px-2 py-0.5 rounded text-xs font-medium bg-surface-muted text-secondary border border-border">NAT</span>
+      {% else %}
+        <span class="inline-flex px-2 py-0.5 rounded text-xs font-medium
+          {% if e.action == 'allow' %}bg-allow-bg text-allow border border-allow-border
+          {% else %}bg-deny-bg text-deny border border-deny-border{% endif %}">{{ e.action | upper }}</span>
+        {% if not e.enabled %}
+          <span class="text-xs text-subtle bg-surface-muted px-2 py-0.5 rounded">выключено</span>
+        {% endif %}
+      {% endif %}
+
+      <span class="text-xs px-1.5 py-0.5 rounded bg-surface-muted text-muted border border-border">{{ e.group_name }}</span>
+      <span class="text-xs text-subtle ml-auto">{{ e.precedence | upper }} #{{ e.position }}</span>
+      {{ ds.stamps(e) }}
+    </div>
+
+    <div class="px-5 py-3">
+      <div class="text-subtle font-medium text-xs mb-2">Объекты вне Global</div>
+      <div class="flex flex-wrap gap-2">
+        {% for obj in e.offending %}
+          <span class="inline-flex items-center gap-1.5 text-xs bg-warn-bg border border-warn-border rounded px-2 py-1">
+            <span class="text-warn font-medium">{{ obj.name }}</span>
+            <span class="text-warn">({{ kind_label(obj.kind) }})</span>
+            <span class="text-warn">→ {{ obj.group_name }}</span>
+          </span>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="px-5 pb-3 text-xs text-subtle font-mono">{{ e.rule_uid }}</div>
+  </div>
+{% endfor %}
+
+{% if not entries %}
+  <div class="text-center py-12 text-subtle text-sm">Все объекты во всех правилах находятся в Global ✓</div>
+{% endif %}

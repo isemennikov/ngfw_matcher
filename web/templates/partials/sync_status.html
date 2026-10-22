@@ -2,7 +2,7 @@
   <div hx-get="/devices/sync/{{ job_id }}/status"
        hx-trigger="every 2s"
        hx-swap="outerHTML"
-       class="flex items-center gap-2 text-xs text-blue-400">
+       class="flex items-center gap-2 text-xs text-secondary">
     <svg class="animate-spin w-3 h-3" fill="none" viewBox="0 0 24 24">
       <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
       <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
@@ -10,7 +10,7 @@
     {{ message }}
   </div>
 {% elif status == 'done' %}
-  <div class="text-xs text-green-400">✓ {{ message }}</div>
+  <div class="text-xs text-allow">✓ {{ message }}</div>
   <div id="device-tree-rows" hx-swap-oob="true">
     {% include "partials/device_tree_rows.html" %}
   </div>
@@ -18,11 +18,11 @@
     {% include "partials/device_status_box.html" %}
   </div>
 {% else %}
-  <div class="text-xs text-red-400 cursor-help"
+  <div class="text-xs text-deny cursor-help"
        title="{{ detail }}">
     ✗ Ошибка синхронизации
     {% if message %}
-      <span class="block mt-0.5 text-red-500/70 font-mono break-all">{{ message[:120] }}{% if message|length > 120 %}…{% endif %}</span>
+      <span class="block mt-0.5 text-deny/70 font-mono break-all">{{ message[:120] }}{% if message|length > 120 %}…{% endif %}</span>
     {% endif %}
   </div>
 {% endif %}

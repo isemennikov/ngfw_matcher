@@ -52,6 +52,10 @@ class NormalizedRule:
     source_group_id:   str = ""
     source_group_name: str = ""
 
+    # Метки из SecurityRule (ISO-8601, UTC). NAT-правила этих полей не имеют.
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
     raw: dict = field(default_factory=dict, repr=False)
 
 

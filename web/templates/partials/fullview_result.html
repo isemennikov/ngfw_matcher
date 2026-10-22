@@ -1,77 +1,87 @@
+{% import "partials/rule_stamps.html" as ds %}
+
 {% macro action_badge(action) %}
   {% if action == 'allow' %}
-    <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-50 text-green-700 border border-green-200">ALLOW</span>
+    <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-allow-bg text-allow border border-allow-border">ALLOW</span>
   {% else %}
-    <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-50 text-red-700 border border-red-200">{{ action | upper }}</span>
+    <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-deny-bg text-deny border border-deny-border">{{ action | upper }}</span>
   {% endif %}
 {% endmacro %}
 
 {% macro addr_list(items, limit=6) %}
   {% if items == ['ANY'] %}
-    <span class="text-slate-400 italic">ANY</span>
+    <span class="text-subtle italic">ANY</span>
   {% else %}
     {% for item in items[:limit] %}
-      <span class="font-mono text-xs">{{ item }}</span>{% if not loop.last %}<span class="text-slate-300 mx-1">,</span>{% endif %}
+      <span class="font-mono text-xs">{{ item }}</span>{% if not loop.last %}<span class="text-subtle">, </span>{% endif %}
     {% endfor %}
     {% if items | length > limit %}
-      <span class="text-slate-400 text-xs"> +{{ items | length - limit }}</span>
+      <span class="text-subtle text-xs">+{{ items | length - limit }}</span>
     {% endif %}
   {% endif %}
 {% endmacro %}
 
 <!-- Итог -->
-<div class="mb-4 text-sm text-slate-600">
-  Найдено правил: <strong class="text-slate-800">{{ total }}</strong>
+<div class="mb-4 text-sm text-secondary">
+  Найдено правил: <strong class="text-body">{{ total }}</strong>
   из {{ n_rules }}
-  {% if overlap_mode %}<span class="ml-2 text-xs text-indigo-600 bg-indigo-50 border border-indigo-200 rounded px-1.5 py-0.5">overlap</span>{% endif %}
+  {% if overlap_mode %}<span class="ml-2 text-xs text-secondary bg-surface-muted border border-border rounded px-1.5 py-0.5">overlap</span>{% endif %}
 </div>
+
+{% if excluded %}
+<div class="mb-4 text-xs text-subtle flex items-center gap-3 flex-wrap">
+  <span>Исключено правил: <strong class="text-body font-mono">{{ excluded }}</strong></span>
+  {% if exclude_src %}<span>· sourceAddr ⊆ <span class="font-mono text-secondary">{{ exclude_src }}</span></span>{% endif %}
+  {% if exclude_dst %}<span>· destinationAddr ⊆ <span class="font-mono text-secondary">{{ exclude_dst }}</span></span>{% endif %}
+</div>
+{% endif %}
 
 {% for entry in entries %}
 {% set mode_label = "sourceAddr" if entry.mode == "src" else "destinationAddr" %}
-{% set mode_color = "blue" if entry.mode == "src" else "purple" %}
 
 <!-- Заголовок группы -->
 <div class="flex items-center gap-2 mb-2 {% if not loop.first %}mt-6{% endif %}">
-  <span class="text-xs font-semibold text-{{ mode_color }}-700 bg-{{ mode_color }}-50 border border-{{ mode_color }}-200 rounded px-2 py-0.5">
+  <span class="text-xs font-semibold text-secondary bg-surface-muted border border-border rounded px-2 py-0.5">
     {{ mode_label }}
   </span>
-  <span class="font-mono text-sm text-slate-700">{{ entry.addr }}</span>
-  <span class="text-xs text-slate-400">→ {{ entry.rules | length }} правил</span>
+  <span class="font-mono text-sm text-body">{{ entry.addr }}</span>
+  <span class="text-xs text-subtle">→ {{ entry.rules | length }} правил</span>
 </div>
 
 {% if entry.rules %}
-<div class="rounded-xl border border-slate-200 overflow-hidden mb-2">
-  <table class="w-full text-xs">
-    <thead class="bg-slate-50 border-b border-slate-200">
+<div class="rounded-xl border border-border overflow-hidden mb-2">
+  <table class="w-full text-xs break-words">
+    <thead class="bg-surface-2 border-b border-border">
       <tr>
-        <th class="px-3 py-2 text-left font-medium text-slate-500 w-8">#</th>
-        <th class="px-3 py-2 text-left font-medium text-slate-500">Правило</th>
-        <th class="px-3 py-2 text-left font-medium text-slate-500 w-20">Действие</th>
-        <th class="px-3 py-2 text-left font-medium text-slate-500">Source</th>
-        <th class="px-3 py-2 text-left font-medium text-slate-500">Destination</th>
-        <th class="px-3 py-2 text-left font-medium text-slate-500">Service</th>
+        <th class="px-3 py-2 text-left font-medium text-muted w-8">#</th>
+        <th class="px-3 py-2 text-left font-medium text-muted">Правило</th>
+        <th class="px-3 py-2 text-left font-medium text-muted w-20">Действие</th>
+        <th class="px-3 py-2 text-left font-medium text-muted">Source</th>
+        <th class="px-3 py-2 text-left font-medium text-muted">Destination</th>
+        <th class="px-3 py-2 text-left font-medium text-muted">Service</th>
       </tr>
     </thead>
-    <tbody class="divide-y divide-slate-100">
+    <tbody class="divide-y divide-border-subtle">
       {% for item in entry.rules %}
       {% set rule = item.rule %}
-      <tr class="hover:bg-slate-50 {% if not rule.enabled %}opacity-50{% endif %}">
-        <td class="px-3 py-2 text-slate-400 font-mono">{{ rule.position_in_precedence or loop.index }}</td>
+      <tr class="hover:bg-surface-2 {% if not rule.enabled %}opacity-50{% endif %}">
+        <td class="px-3 py-2 text-subtle font-mono">{{ rule.position_in_precedence or loop.index }}</td>
         <td class="px-3 py-2">
           <div class="flex items-center gap-1.5">
             {% if rule.action == 'allow' %}
-              <span class="w-2 h-2 rounded-full bg-green-500 flex-shrink-0"></span>
+              <span class="w-2 h-2 rounded-full bg-allow flex-shrink-0"></span>
             {% else %}
-              <span class="w-2 h-2 rounded-full bg-red-500 flex-shrink-0"></span>
+              <span class="w-2 h-2 rounded-full bg-deny flex-shrink-0"></span>
             {% endif %}
-            <span class="font-medium text-slate-800 truncate max-w-[200px]" title="{{ rule.name }}">{{ rule.name }}</span>
+            <span class="font-medium text-body truncate max-w-xs" title="{{ rule.name }}">{{ rule.name }}</span>
           </div>
-          <div class="text-slate-400 font-mono text-xs mt-0.5">{{ rule.precedence }}</div>
+          <div class="text-subtle font-mono text-xs mt-0.5">{{ rule.precedence }}</div>
+          {{ ds.stamps(rule) }}
         </td>
         <td class="px-3 py-2">{{ action_badge(rule.action) }}</td>
-        <td class="px-3 py-2 text-slate-600">{{ addr_list(item.src) }}</td>
-        <td class="px-3 py-2 text-slate-600">{{ addr_list(item.dst) }}</td>
-        <td class="px-3 py-2 text-slate-600">{{ addr_list(item.svc) }}</td>
+        <td class="px-3 py-2 text-secondary">{{ addr_list(item.src) }}</td>
+        <td class="px-3 py-2 text-secondary">{{ addr_list(item.dst) }}</td>
+        <td class="px-3 py-2 text-secondary">{{ addr_list(item.svc) }}</td>
       </tr>
       {% endfor %}
     </tbody>
@@ -79,7 +89,7 @@
 </div>
 
 {% else %}
-<div class="text-sm text-slate-400 italic mb-2 px-1">Правила не найдены</div>
+<div class="text-sm text-subtle italic mb-2 px-1">Правила не найдены</div>
 {% endif %}
 
 {% endfor %}
