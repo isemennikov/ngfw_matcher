@@ -64,15 +64,33 @@ async def do_fullview(
     def _svcs(field) -> list[str]:
         if is_any_kind(field):
             return ["ANY"]
-        out = []
+        ports_by_proto: dict[str, list[str]] = {}
+        order: list[str] = []
+        groups: list[str] = []
         for item in (field.get("objects") or []):
             if "service" in item:
                 svc = item["service"]
-                p   = PROTO.get(svc.get("protocol", 0), "?")
-                pts = [_port_str(sp) for sp in (svc.get("dstPorts") or [])]
-                out.append(f"{p.upper()}/{','.join(pts)}" if pts else p.upper())
+                num = svc.get("protocol", 0)
+                name = PROTO.get(num)
+                if num == 0:
+                    label = "ANY"
+                elif name:
+                    label = f"{name.upper()}({num})"
+                else:
+                    label = str(num)
+                if label not in ports_by_proto:
+                    ports_by_proto[label] = []
+                    order.append(label)
+                for sp in (svc.get("dstPorts") or []):
+                    pt = _port_str(sp)
+                    if pt not in ports_by_proto[label]:
+                        ports_by_proto[label].append(pt)
             elif "serviceGroup" in item:
-                out.append(f"[группа] {item['serviceGroup'].get('name','?')}")
+                groups.append(f"[группа] {item['serviceGroup'].get('name','?')}")
+        out = [f"{label}: {', '.join(ports_by_proto[label])}"
+               if ports_by_proto[label] else label
+               for label in order]
+        out.extend(groups)
         return out or ["ANY"]
 
     scan_results = _run_scan(matcher, src, dst, strict, dport=dport.strip(), proto=proto.strip())

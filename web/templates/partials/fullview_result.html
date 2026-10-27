@@ -12,12 +12,25 @@
   {% if items == ['ANY'] %}
     <span class="text-subtle italic">ANY</span>
   {% else %}
-    {% for item in items[:limit] %}
+    {% for item in (items if limit is none else items[:limit]) %}
       <span class="font-mono text-xs">{{ item }}</span>{% if not loop.last %}<span class="text-subtle">, </span>{% endif %}
     {% endfor %}
-    {% if items | length > limit %}
+    {% if limit is not none and items | length > limit %}
       <span class="text-subtle text-xs">+{{ items | length - limit }}</span>
     {% endif %}
+  {% endif %}
+{% endmacro %}
+
+{% macro svc_list(items) %}
+  {% if items == ['ANY'] %}
+    <span class="text-subtle italic">ANY</span>
+  {% else %}
+    {% for item in items %}
+      {% set parts = item.split(': ', 1) %}
+      <div class="font-mono text-xs break-words">
+        <span class="font-semibold text-body">{{ parts[0] }}</span>{% if parts | length > 1 %}: {{ parts[1] }}{% endif %}
+      </div>
+    {% endfor %}
   {% endif %}
 {% endmacro %}
 
@@ -49,7 +62,7 @@
 </div>
 
 {% if entry.rules %}
-<div class="rounded-xl border border-border overflow-hidden mb-2">
+<div class="rounded-xl border border-border overflow-x-auto mb-2">
   <table class="w-full text-xs break-words">
     <thead class="bg-surface-2 border-b border-border">
       <tr>
@@ -81,7 +94,7 @@
         <td class="px-3 py-2">{{ action_badge(rule.action) }}</td>
         <td class="px-3 py-2 text-secondary">{{ addr_list(item.src) }}</td>
         <td class="px-3 py-2 text-secondary">{{ addr_list(item.dst) }}</td>
-        <td class="px-3 py-2 text-secondary">{{ addr_list(item.svc) }}</td>
+        <td class="px-3 py-2 text-secondary">{{ svc_list(item.svc) }}</td>
       </tr>
       {% endfor %}
     </tbody>
