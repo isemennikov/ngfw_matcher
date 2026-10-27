@@ -3,8 +3,12 @@
 RuleMatcher — first-match движок.
 
 Режимы матчинга сетей (параметр strict):
-    strict=True (по умолчанию) — flow ⊆ rule_net (суперсеть или точное совпадение)
-    strict=False (--overlap)   — любое пересечение (включая подсети)
+    match(): strict=True (по умолчанию) — flow ⊆ rule_net (суперсеть или точное совпадение)
+             strict=False (--overlap)   — любое пересечение (включая подсети)
+
+    fullview_scan*(): strict=True  — rule_net явно совпадает с запрошенным адресом/CIDR
+                      strict=False — любое пересечение (сети, содержащие адрес,
+                                     и подсети/хосты внутри него)
 
 Зональные правила пропускаются — анализ только IP/порт/протокол.
 
@@ -62,6 +66,30 @@ def _flow_matches_rule_net(flow, rule_net, strict: bool = True) -> bool:
 
 def _addr_in_nets(flow, rule_nets: list, strict: bool = True) -> bool:
     return any(_flow_matches_rule_net(flow, rn, strict) for rn in rule_nets)
+
+
+def _flow_exact_matches_rule_net(flow, rule_net) -> bool:
+    """Fullview без overlap: правило должно явно указывать тот же адрес/CIDR.
+
+    ANY (0.0.0.0/0, ::/0) считается совпадением всегда — правило без
+    ограничения по адресу применимо к любому запросу.
+    """
+    if rule_net in _ZERO_NETS:
+        return True
+    try:
+        flow_net = (flow if isinstance(flow, _AnyNet)
+                    else ipaddress.ip_network(f"{flow}/{flow.max_prefixlen}",
+                                              strict=False))
+        return flow_net == rule_net
+    except (TypeError, ValueError):
+        return False
+
+
+def _addr_in_nets_fullview(flow, rule_nets: list, strict: bool = True) -> bool:
+    """Матчинг адреса для Fullview: exact (strict) либо любое пересечение."""
+    if strict:
+        return any(_flow_exact_matches_rule_net(flow, rn) for rn in rule_nets)
+    return any(_flow_matches_rule_net(flow, rn, strict=False) for rn in rule_nets)
 
 
 def _net_relation(flow_net, rule_nets: list) -> str:
@@ -148,6 +176,10 @@ class RuleMatcher:
         Возвращает ВСЕ включённые правила, где src совпадает с flow.src_ip.
         dst/port/proto — дополнительные фильтры (пропускаются если any/0).
         Зональные правила включаются в выдачу (в отличие от match()).
+
+        strict=True  — только правила с явно указанным адресом/CIDR (или ANY);
+        strict=False — любое пересечение (overlap).
+        FQDN/geo-объекты не проверяются по IP и не участвуют в матчинге.
         """
         try:
             src = _parse_flow_addr(flow.src_ip)
@@ -178,13 +210,16 @@ class RuleMatcher:
             if src_zones or dst_zones:
                 continue
 
-            src_nets = self.resolver.resolve_field_network(rule.source_addr)
-            if not _addr_in_nets(src, src_nets, self.strict):
+            # concrete: FQDN/geo-объекты не разворачиваются в IP. Обычный
+            # resolve_field_network для FQDN-only группы возвращает ANY_NET,
+            # из-за чего правило ложно матчилось по любому адресу.
+            src_nets = self.resolver.resolve_field_network_concrete(rule.source_addr)
+            if not _addr_in_nets_fullview(src, src_nets, self.strict):
                 continue
 
             if not is_dst_any and dst is not None:
-                dst_nets = self.resolver.resolve_field_network(rule.destination_addr)
-                if not _addr_in_nets(dst, dst_nets, self.strict):
+                dst_nets = self.resolver.resolve_field_network_concrete(rule.destination_addr)
+                if not _addr_in_nets_fullview(dst, dst_nets, self.strict):
                     continue
 
             if (not is_port_any or not is_proto_any) and not self._is_app_only(rule):
@@ -201,6 +236,10 @@ class RuleMatcher:
         Возвращает ВСЕ включённые правила, где dst совпадает с flow.dst_ip.
         src/port/proto — дополнительные фильтры (пропускаются если any/0).
         Зональные правила пропускаются (как в fullview_scan).
+
+        strict=True  — только правила с явно указанным адресом/CIDR (или ANY);
+        strict=False — любое пересечение (overlap).
+        FQDN/geo-объекты не проверяются по IP и не участвуют в матчинге.
         """
         try:
             dst = _parse_flow_addr(flow.dst_ip)
@@ -228,13 +267,16 @@ class RuleMatcher:
             if src_zones or dst_zones:
                 continue
 
-            dst_nets = self.resolver.resolve_field_network(rule.destination_addr)
-            if not _addr_in_nets(dst, dst_nets, self.strict):
+            # concrete: FQDN/geo-объекты не разворачиваются в IP. Обычный
+            # resolve_field_network для FQDN-only группы возвращает ANY_NET,
+            # из-за чего правило ложно матчилось по любому адресу.
+            dst_nets = self.resolver.resolve_field_network_concrete(rule.destination_addr)
+            if not _addr_in_nets_fullview(dst, dst_nets, self.strict):
                 continue
 
             if not is_src_any and src is not None:
-                src_nets = self.resolver.resolve_field_network(rule.source_addr)
-                if not _addr_in_nets(src, src_nets, self.strict):
+                src_nets = self.resolver.resolve_field_network_concrete(rule.source_addr)
+                if not _addr_in_nets_fullview(src, src_nets, self.strict):
                     continue
 
             if (not is_port_any or not is_proto_any) and not self._is_app_only(rule):
