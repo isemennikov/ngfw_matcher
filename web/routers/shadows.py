@@ -8,7 +8,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
 from .. import state
-from ..deps import require_matcher, base_ctx, has_data_source, json_download
+from ..deps import require_matcher, base_ctx, has_data_source, json_download, get_active_group_name
 from ...core.export import build_shadows_dict
 
 router = APIRouter()
@@ -132,4 +132,7 @@ async def export_shadows(
     fetch_net = matcher.resolver._fetch_net_group
     fetch_svc = matcher.resolver._fetch_svc_group
     query = {"mode": mode}
-    return json_download(build_shadows_dict(results, query, fetch_net, fetch_svc), f"shadows_{mode}")
+    group_name = get_active_group_name(request)
+    return json_download(build_shadows_dict(results, query, fetch_net, fetch_svc,
+                                            device_group=group_name),
+                         f"shadows_{mode}", device_group=group_name)

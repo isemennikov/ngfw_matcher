@@ -170,10 +170,18 @@ def has_data_source(request: Request) -> bool:
     """True если есть либо выбранное устройство, либо оффлайн-снапшот."""
     return bool(request.session.get("selected_device") or request.session.get("offline_snap"))
 
+_SAFE_GROUP_PART = re.compile(r"[^A-Za-z0-9._-]+")
 
-def json_download(data: dict, prefix: str) -> Response:
-    """Вернуть dict как скачиваемый JSON-файл с именем prefix_YYYYMMDD_HHMMSS.json."""
+
+def json_download(data: dict, prefix: str, device_group: str | None = None) -> Response:
+    """Вернуть dict как скачиваемый JSON-файл.
+    
+    Имя: prefix[_<группа>]_YYYYMMDD_HHMMSS.json, только ASCII (A-Z, a-z, 0-9,
+    '.', '_', '-'). Остальные символы имени группы заменяются на '_'."""
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    safe_group = _SAFE_GROUP_PART.sub("_", device_group or "").strip("._-")
+    filename = (f"{prefix}_{safe_group}_{ts}.json" if safe_group
+                else f"{prefix}_{ts}.json")
     filename = f"{prefix}_{ts}.json"
     content  = json.dumps(data, ensure_ascii=False, indent=2)
     return Response(
@@ -218,6 +226,28 @@ def require_snapshot_path(request: Request) -> str:
         raise HTTPException(status_code=400, detail="Snapshot not found — run Sync first")
     return device["snapshot_path"]
 
+
+def get_active_group_name(request: Request) -> str | None:
+    """Человекочитаемое имя активной группы правил для метаданных JSON-экспорта."""
+    try:
+        snap_path = require_snapshot_path(request)
+        snap = state.load_snapshot_dict(snap_path)
+    except Exception:
+        return None
+
+    if not is_multi(snap):
+        return snap.get("device_group_name") or snap.get("device_group_id") or None
+
+    group_id = get_active_group_id(request)
+    groups = snap.get("device_groups") or {}
+    if group_id and group_id in groups:
+        return groups[group_id].get("name") or group_id
+    if group_id:
+        for g in list_groups(snap):
+            if g.get("id") == group_id:
+                return g.get("name")
+    first = next(iter(groups.values()), None)
+    return (first or {}).get("name")
 
 def require_matcher(request: Request, strict: bool = True) -> RuleMatcher:
     group_id = get_active_group_id(request)

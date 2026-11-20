@@ -8,7 +8,8 @@ from fastapi.templating import Jinja2Templates
 
 from .. import state
 from ..deps import (base_ctx, has_data_source, require_snapshot_path,
-                    get_active_group_id, get_include_parents, json_download)
+                    get_active_group_id, get_active_group_name,
+                    get_include_parents, json_download)
 from ...core.rules import load_nat_rules_from_snapshot, build_rules
 from ...core.snapshot import get_effective_group
 from ...core.models import NatRule
@@ -94,8 +95,10 @@ async def export_nat(
     fetch_net = lambda gid: net_cache.get(gid, [])
     fetch_svc = lambda gid: svc_cache.get(gid, [])
     query     = {"nat_type": nat_type, "search": search.strip() or None}
-    data      = build_nat_audit_dict(associations, query, fetch_net, fetch_svc)
-    return json_download(data, f"nat_audit_{nat_type}")
+    group_name = get_active_group_name(request)
+    data      = build_nat_audit_dict(associations, query, fetch_net, fetch_svc,
+                                     device_group=group_name)
+    return json_download(data, f"nat_audit_{nat_type}", device_group=group_name)
 
 
 def _nets(field: dict | None) -> list[str]:

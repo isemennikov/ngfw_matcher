@@ -7,7 +7,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
 from .. import state
-from ..deps import base_ctx, has_data_source, require_snapshot_path, json_download
+from ..deps import base_ctx, has_data_source, require_snapshot_path, json_download, get_active_group_name
 from ...core.where_is_use import audit_non_global, build_audit_summary, find_object, has_owner_data
 from ...core.export import build_where_is_use_audit_dict, build_where_is_use_search_dict
 
@@ -71,7 +71,10 @@ async def export_audit(request: Request):
                            "выполните синхронизацию заново", status_code=400, media_type="text/plain")
 
     entries, summary = await asyncio.to_thread(_audit, snap)
-    return json_download(build_where_is_use_audit_dict(entries, {}, summary), "where_is_use_audit")
+    group_name = get_active_group_name(request)
+    return json_download(build_where_is_use_audit_dict(entries, {}, summary,
+                                                       device_group=group_name),
+                         "where_is_use_audit", device_group=group_name)
 
 
 @router.post("/where-is-use/search", response_class=HTMLResponse)
@@ -108,4 +111,6 @@ async def export_search(request: Request, query: str = Form("")):
                            "выполните синхронизацию заново", status_code=400, media_type="text/plain")
 
     result = await asyncio.to_thread(find_object, snap, query)
-    return json_download(build_where_is_use_search_dict(result), "where_is_use_search")
+    roup_name = get_active_group_name(request)
+    return json_download(build_where_is_use_search_dict(result, device_group=group_name),
+                         "where_is_use_search", device_group=group_name)

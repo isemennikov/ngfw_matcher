@@ -7,7 +7,7 @@ from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, Response
 from fastapi.templating import Jinja2Templates
 
-from ..deps import require_matcher, base_ctx, has_data_source, json_download
+from ..deps import require_matcher, base_ctx, has_data_source, json_download, get_active_group_name
 from ...core.models import TrafficFlow
 from ...core.resolver import is_any_kind, PROTO
 from ...core.utils import port_str as _port_str, parse_ports as _parse_ports
@@ -162,7 +162,10 @@ async def export_fullview(
              "dport": dport or "any", "proto": proto or "any", "overlap": not strict,
              "exclude_src": exclude_src.strip() or None,
              "exclude_dst": exclude_dst.strip() or None}
-    return json_download(build_fullview_dict(flow_results, query, fetch_net, fetch_svc), "fullview")
+    group_name = get_active_group_name(request)
+    return json_download(build_fullview_dict(flow_results, query, fetch_net, fetch_svc,
+                                            device_group=group_name), "fullview",
+                         device_group=group_name)
 
 
 def _run_scan(matcher, src: str, dst: str, strict: bool,

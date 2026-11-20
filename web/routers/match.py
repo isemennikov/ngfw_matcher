@@ -4,7 +4,7 @@ from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
-from ..deps import require_matcher, base_ctx, has_data_source, json_download
+from ..deps import require_matcher, base_ctx, has_data_source, json_download, get_active_group_name
 from ...core.models import TrafficFlow
 from ...core.utils import parse_ports as _parse_ports, port_str as _port_str
 from ...core.export import build_match_dict
@@ -178,7 +178,10 @@ async def export_match(
         flow_results.append({"flow": flow, "matched": result.matched, "shadowed": result.shadowed})
 
     query = {"src": src, "dst": dst, "dport": dport, "proto": proto, "overlap": not strict}
-    return json_download(build_match_dict(flow_results, query, fetch_net, fetch_svc), "match")
+    group_name = get_active_group_name(request)
+    return json_download(build_match_dict(flow_results, query, fetch_net, fetch_svc,
+                                          device_group=group_name), "match",
+                         device_group=group_name)
 
 
 def _error(request, msg: str):

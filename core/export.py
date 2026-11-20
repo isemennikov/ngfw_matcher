@@ -18,8 +18,11 @@ from .._version import __version__
 
 # ─── Мета ────────────────────────────────────────────────────────────────────
 
-def json_meta() -> dict:
-    return {"tool": "ngfw-matcher", "version": __version__}
+def json_meta(device_group: str | None = None) -> dict:
+    meta = {"tool": "ngfw-matcher", "version": __version__}
+    if device_group:
+        meta["device_group"] = device_group
+    return meta
 
 
 # ─── Низкоуровневые сериализаторы объектов ───────────────────────────────────
@@ -69,7 +72,7 @@ def _net_obj_matches_src(obj: dict, src, fetch_group=None, _depth: int = 0) -> b
             net = ipaddress.ip_network(inet, strict=False)
             if isinstance(src, (ipaddress.IPv4Address, ipaddress.IPv6Address)):
                 return src in net
-            return src.subnet_of(net)
+            return src.overlaps(net)
         except (ValueError, TypeError):
             return False
     if "networkIpRange" in obj:
@@ -79,7 +82,7 @@ def _net_obj_matches_src(obj: dict, src, fetch_group=None, _depth: int = 0) -> b
             end   = ipaddress.ip_address(r.get("to",   ""))
             if isinstance(src, (ipaddress.IPv4Address, ipaddress.IPv6Address)):
                 return start <= src <= end
-            return start <= src.network_address and src.broadcast_address <= end
+            return src.network_address <= end and src.broadcast_address >= start
         except (ValueError, TypeError):
             return False
     if "networkFqdn" in obj or "networkGeoAddress" in obj:
@@ -134,7 +137,10 @@ def serialize_src_field(field: dict | None, src_str: str, fetch_group=None) -> d
     except ValueError:
         return serialize_net_field(field, fetch_group)
     objects = [_serialize_net_obj_filtered(obj, src, fetch_group) for obj in (field.get("objects") or [])]
-    return {"kind": field.get("kind", "RULE_KIND_LIST"), "objects": [o for o in objects if o is not None]}
+    matching = [o for o in objects if o is not None]
+    if not matching:
+        return serialize_net_field(field, fetch_group)
+    return {"kind": field.get("kind", "RULE_KIND_LIST"), "objects": matching}
 
 
 def _serialize_svc_obj(item: dict, fetch_group=None, _depth: int = 0) -> dict:
@@ -218,6 +224,7 @@ def build_match_dict(
     query: dict,
     fetch_net=None,
     fetch_svc=None,
+    device_group: str | None = None,
 ) -> dict:
     flows_out = []
     for entry in flow_results:
@@ -237,7 +244,7 @@ def build_match_dict(
         output = {"query": query, **flows_out[0]}
     else:
         output = {"query": query, "flows": flows_out}
-    return {"_ngfw_matcher": json_meta(), **output}
+    return {"_ngfw_matcher": json_meta(device_group), **output}
 
 
 def build_find_dict(
@@ -245,10 +252,11 @@ def build_find_dict(
     query: dict,
     fetch_net=None,
     fetch_svc=None,
+    device_group: str | None = None,
 ) -> dict:
     rules_out = [serialize_rule(r, fetch_net, fetch_svc) for r in rules]
     return {
-        "_ngfw_matcher":   json_meta(),
+        "_ngfw_matcher":   json_meta(device_group),
         "query":         query,
         "matched_count": len(rules_out),
         "rules":         rules_out,
@@ -260,6 +268,7 @@ def build_shadows_dict(
     query: dict,
     fetch_net=None,
     fetch_svc=None,
+    device_group: str | None = None,
 ) -> dict:
     entries_out = []
     for entry in results:
@@ -274,7 +283,7 @@ def build_shadows_dict(
         entries_out.append(e)
 
     return {
-        "_ngfw_matcher": json_meta(),
+        "_ngfw_matcher": json_meta(device_group),
         "query":       query,
         "total":       len(entries_out),
         "conflicts":   sum(1 for r in results if r["conflict"]),
@@ -317,6 +326,7 @@ def build_nat_audit_dict(
     query: dict,
     fetch_net=None,
     fetch_svc=None,
+    device_group: str | None = None,
 ) -> dict:
     entries = []
     for assoc in associations:
@@ -334,7 +344,7 @@ def build_nat_audit_dict(
         entries.append(item)
 
     return {
-        "_ngfw_matcher": json_meta(),
+        "_ngfw_matcher": json_meta(device_group),
         "query":       query,
         "total":       len(entries),
         "rules":       entries,
@@ -346,16 +356,15 @@ def build_fullview_dict(
     query: dict,
     fetch_net=None,
     fetch_svc=None,
+    device_group: str | None = None,
 ) -> dict:
     flows_out = []
     for entry in flow_results:
         flow  = entry["flow"]
         mode  = entry.get("mode", "src")
         addr  = entry.get("addr", flow.src_ip if mode == "src" else flow.dst_ip)
-        # src-скан → фильтруем source field; dst-скан → без фильтра
-        filter_src = flow.src_ip if mode == "src" else None
-        rules_out  = [serialize_rule(r, fetch_net, fetch_svc, filter_src=filter_src)
-                      for r in entry["rules"]]
+        rules_out = [serialize_rule(r, fetch_net, fetch_svc)
+                     for r in entry["rules"]]
         flows_out.append({
             "addr":          addr,
             "mode":          mode,
@@ -374,11 +383,12 @@ def build_fullview_dict(
     return {"_ngfw_matcher": json_meta(), **output}
 
 
-def build_where_is_use_audit_dict(entries: list[dict], query: dict, summary: dict | None = None) -> dict:
+def build_where_is_use_audit_dict(entries: list[dict], query: dict, summary: dict | None = None,
+                                  device_group: str | None = None) -> dict:
     """entries — вывод core.where_is_use.audit_non_global();
     summary — вывод core.where_is_use.build_audit_summary()."""
     out = {
-        "_ngfw_matcher": json_meta(),
+        "_ngfw_matcher": json_meta(device_group),
         "query":       query,
         "total":       len(entries),
         "rules":       entries,
@@ -388,10 +398,10 @@ def build_where_is_use_audit_dict(entries: list[dict], query: dict, summary: dic
     return out
 
 
-def build_where_is_use_search_dict(result: dict) -> dict:
+def build_where_is_use_search_dict(result: dict, device_group: str | None = None) -> dict:
     """result — вывод core.where_is_use.find_object()."""
     return {
-        "_ngfw_matcher": json_meta(),
+         "_ngfw_matcher": json_meta(device_group),
         "query":       result.get("query", ""),
         "total":       len(result.get("matches") or []),
         "matches":     result.get("matches") or [],

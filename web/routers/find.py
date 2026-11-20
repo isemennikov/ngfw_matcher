@@ -143,7 +143,10 @@ async def export_find(
     fetch_net = matcher.resolver._fetch_net_group
     fetch_svc = matcher.resolver._fetch_svc_group
     query = {"pattern": pattern or "*", "dport": dport or "any", "proto": proto or "any"}
-    return json_download(build_find_dict(rules, query, fetch_net, fetch_svc), "find_rule")
+    group_name = get_active_group_name(request)
+    return json_download(build_find_dict(rules, query, fetch_net, fetch_svc,
+                                         device_group=group_name), "find_rule",
+                         device_group=group_name)
 
 
 def _build_card(rule, fetch_net, fetch_svc) -> dict:
